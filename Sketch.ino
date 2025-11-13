@@ -6,6 +6,7 @@
   === SENSORS:  DHT11 (on D2)                                        ===
   === DISPLAY:  I2C LCD (on SDA/SCL)                                 ===
   === ALERTS:   Green LED (D10, ON), Red LED (D11, BLINKING)         ===
+  ===           Buzzer (D12, BLINKING) <-- NEW!                      ===
   === PROTOCOL: MQTT                                                 ===
   ======================================================================
 */
@@ -25,8 +26,9 @@ DHT dht(DHTPIN, DHTTYPE);
 
 LiquidCrystal_I2C lcd(0x27, 20, 4); // Use 0x3F if 0x27 is blank
 
-#define GREEN_LED_PIN 10  // Green LED on D10
-#define RED_LED_PIN   11  // Red LED on D11
+#define GREEN_LED_PIN 10  // Green LED (Normal) on D10
+#define RED_LED_PIN   11  // Red LED (Alert) on D11
+#define BUZZER_PIN    12  // NEW: Buzzer on D12
 
 // --- 3. ALERT THRESHOLDS ---
 #define MIN_TEMP 18.0
@@ -36,8 +38,11 @@ LiquidCrystal_I2C lcd(0x27, 20, 4); // Use 0x3F if 0x27 is blank
 // --- 4. WI-FI & MQTT CONFIGURATION ---
 const char* ssid = "VM3574649";
 const char* password = "rr7wxNskPwfj";
-const char* mqtt_broker = "broker.hivemq.com";
+
+// Use the broker that matches your website
+const char* mqtt_broker = "test.mosquitto.org"; 
 const int mqtt_port = 1883;
+
 // !!! CHANGE "student181" TO A UNIQUE NAME FOR YOUR GROUP !!!
 const char* mqtt_topic = "hope/iot_project/student181";
 
@@ -56,6 +61,7 @@ void setup() {
 
   pinMode(GREEN_LED_PIN, OUTPUT);
   pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT); // NEW: Set up buzzer pin
   
   lcd.init();
   lcd.backlight();
@@ -120,7 +126,8 @@ void loop() {
       lcd.setCursor(0, 0); // Row 0
       lcd.print("Temp:     ");
       lcd.print(temperature, 1);
-      lcd.print((char)223); "C";
+      lcd.print((char)223); // Degree symbol
+      lcd.print("C");
       
       lcd.setCursor(0, 1); // Row 1
       lcd.print("Humidity: ");
@@ -147,26 +154,29 @@ void loop() {
     }
   }
 
-  // --- LED CONTROL (Runs every loop for fast blinking) ---
+  // --- LED & BUZZER CONTROL (Runs every loop for fast blinking) ---
   if (alertStatus == "alert") {
     // --- ALERT STATE ---
     digitalWrite(GREEN_LED_PIN, LOW); // Green OFF
 
-    // Blink logic for Red LED (every 500ms)
+    // Blink logic for Red LED & Buzzer (every 500ms)
     if (millis() - lastBlinkMillis >= 500) {
       lastBlinkMillis = millis();
       redLedState = !redLedState; // Toggle state (HIGH -> LOW -> HIGH)
       digitalWrite(RED_LED_PIN, redLedState);
+      digitalWrite(BUZZER_PIN, redLedState); // NEW: Buzzer syncs with LED
     }
     
   } else if (alertStatus == "normal") {
     // --- NORMAL STATE ---
     digitalWrite(GREEN_LED_PIN, HIGH); // Green ON
     digitalWrite(RED_LED_PIN, LOW);    // Red OFF
+    digitalWrite(BUZZER_PIN, LOW);     // NEW: Buzzer OFF
     
   } else {
     // --- SENSOR ERROR STATE ---
     digitalWrite(GREEN_LED_PIN, LOW);  // Green OFF
     digitalWrite(RED_LED_PIN, LOW);    // Red OFF
+    digitalWrite(BUZZER_PIN, LOW);     // NEW: Buzzer OFF
   }
 }
