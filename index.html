@@ -125,16 +125,21 @@
             70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
         }
 
-        /* Toggle Switch styles */
-        .toggle-checkbox:checked {
-            background-color: #2563EB; /* bg-blue-600 */
-        }
+        /* UPDATED: Toggle Switch styles */
         .toggle-checkbox:checked + .toggle-label {
-            transform: translateX(100%);
+            background-color: #2563EB; /* bg-blue-600 */
             border-color: #2563EB; /* border-blue-600 */
         }
+        .toggle-checkbox:checked + .toggle-label .toggle-circle {
+            transform: translateX(16px); /* 16px = 4 units (w-10 - w-6) */
+            border-color: #2563EB; /* border-blue-600 */
+        }
+        .toggle-circle {
+            transition: transform 0.2s ease-in-out;
+        }
+        /* Fix for the label transition */
         .toggle-label {
-            transition: all 0.2s ease-in-out;
+            transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
         }
     </style>
 </head>
@@ -347,9 +352,12 @@
                         <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                             <div class="flex justify-between items-center">
                                 <span class="font-medium text-slate-700 dark:text-slate-200">Toggle Power</span>
-                                <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                                    <input type="checkbox" name="toggle" id="toggle-kitchen" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
-                                    <label for="toggle-kitchen" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 dark:bg-slate-700 cursor-pointer"></label>
+                                <!-- UPDATED: Robust Toggle HTML -->
+                                <div class="relative inline-block w-10 align-middle">
+                                    <input type="checkbox" name="toggle" id="toggle-kitchen" class="toggle-checkbox absolute opacity-0 w-0 h-0"/>
+                                    <label for="toggle-kitchen" class="toggle-label block h-6 w-10 rounded-full bg-gray-300 dark:bg-slate-700 cursor-pointer transition-colors duration-200 ease-in-out">
+                                        <span class="toggle-circle absolute left-0 top-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border-4 border-gray-300 dark:border-slate-700 shadow transform transition-transform duration-200 ease-in-out"></span>
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -405,7 +413,7 @@
                 </div>
             </div> <!-- End Page 3: History -->
             
-            <!-- NEW: Page 4: Settings (No longer under construction) -->
+            <!-- Page 4: Settings (No longer under construction) -->
             <div id="page-settings" class="page hidden">
                 <div class="p-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm sticky top-0 z-10">
                     <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Settings</h1>
@@ -450,17 +458,23 @@
                             <!-- Email Alerts -->
                             <div class="flex justify-between items-center">
                                 <span class="font-medium text-slate-700 dark:text-slate-200">Email Alerts</span>
-                                <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                                    <input type="checkbox" name="toggle" id="toggle-email" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white dark:bg-slate-900 border-4 appearance-none cursor-pointer"/>
-                                    <label for="toggle-email" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 dark:bg-slate-700 cursor-pointer"></label>
+                                <!-- UPDATED: Robust Toggle HTML -->
+                                <div class="relative inline-block w-10 align-middle">
+                                    <input type="checkbox" name="toggle" id="toggle-email" class="toggle-checkbox absolute opacity-0 w-0 h-0"/>
+                                    <label for="toggle-email" class="toggle-label block h-6 w-10 rounded-full bg-gray-300 dark:bg-slate-700 cursor-pointer transition-colors duration-200 ease-in-out">
+                                        <span class="toggle-circle absolute left-0 top-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border-4 border-gray-300 dark:border-slate-700 shadow transform transition-transform duration-200 ease-in-out"></span>
+                                    </label>
                                 </div>
                             </div>
                             <!-- Push Notifications -->
                             <div class="flex justify-between items-center">
                                 <span class="font-medium text-slate-700 dark:text-slate-200">Push Notifications</span>
-                                <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                                    <input type="checkbox" name="toggle" id="toggle-push" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white dark:bg-slate-900 border-4 appearance-none cursor-pointer" checked/>
-                                    <label for="toggle-push" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 dark:bg-slate-700 cursor-pointer"></label>
+                                <!-- UPDATED: Robust Toggle HTML -->
+                                <div class="relative inline-block w-10 align-middle">
+                                    <input type="checkbox" name="toggle" id="toggle-push" class="toggle-checkbox absolute opacity-0 w-0 h-0" checked/>
+                                    <label for="toggle-push" class="toggle-label block h-6 w-10 rounded-full bg-gray-300 dark:bg-slate-700 cursor-pointer transition-colors duration-200 ease-in-out">
+                                        <span class="toggle-circle absolute left-0 top-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border-4 border-gray-300 dark:border-slate-700 shadow transform transition-transform duration-200 ease-in-out"></span>
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -473,9 +487,12 @@
                             <!-- Dark Mode -->
                             <div class="flex justify-between items-center">
                                 <span class="font-medium text-slate-700 dark:text-slate-200">Dark Mode</span>
-                                <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                                    <input type="checkbox" name="toggle" id="toggle-dark-mode" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white dark:bg-slate-900 border-4 appearance-none cursor-pointer"/>
-                                    <label for="toggle-dark-mode" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 dark:bg-slate-700 cursor-pointer"></label>
+                                <!-- UPDATED: Robust Toggle HTML -->
+                                <div class="relative inline-block w-10 align-middle">
+                                    <input type="checkbox" name="toggle" id="toggle-dark-mode" class="toggle-checkbox absolute opacity-0 w-0 h-0"/>
+                                    <label for="toggle-dark-mode" class="toggle-label block h-6 w-10 rounded-full bg-gray-300 dark:bg-slate-700 cursor-pointer transition-colors duration-200 ease-in-out">
+                                        <span class="toggle-circle absolute left-0 top-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border-4 border-gray-300 dark:border-slate-700 shadow transform transition-transform duration-200 ease-in-out"></span>
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -553,7 +570,7 @@
         const pages = document.querySelectorAll('.page');
         const navLinks = document.querySelectorAll('.nav-link');
         
-        // NEW: Settings Page Elements
+        // Settings Page Elements
         const maxTempSlider = document.getElementById('max-temp-slider');
         const minTempSlider = document.getElementById('min-temp-slider');
         const maxHumiSlider = document.getElementById('max-humi-slider');
@@ -959,6 +976,10 @@
                     link.classList.add('nav-link-active');
                 }
             });
+            
+            // Re-render icons if they are on the new page
+            // This is a fix for icons not showing on page switch
+            setTimeout(() => lucide.createIcons(), 0);
         }
 
         document.getElementById('sidebar-nav').addEventListener('click', (e) => {
@@ -1002,7 +1023,7 @@
             });
         }
 
-        // --- NEW: Settings Page Logic ---
+        // --- Settings Page Logic ---
         
         // Load initial values for sliders
         if (maxTempSlider) {
@@ -1056,8 +1077,12 @@
         toggleDarkMode?.addEventListener('click', () => {
             if (toggleDarkMode.checked) {
                 document.documentElement.classList.add('dark');
+                // Re-render charts for dark mode
+                Object.values(Chart.instances).forEach(chart => chart.update());
             } else {
                 document.documentElement.classList.remove('dark');
+                // Re-render charts for light mode
+                Object.values(Chart.instances).forEach(chart => chart.update());
             }
         });
 
