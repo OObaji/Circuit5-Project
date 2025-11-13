@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Dashboard [DEMO]</title>
+    
+    <!-- 1. Load Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Load Chart.js (for our gauges and charts) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- 3. Load Lucide icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        /* Use a clean, modern font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9; /* bg-slate-100 */
+        }
+        
+        /* Custom styles for the Chart.js doughnut text */
+        .chart-label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2.5rem; /* 40px */
+            font-weight: 600;
+        }
+        
+        /* Card base style */
+        .card {
+            background-color: #ffffff; /* white */
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        
+        /* Stagger the fade-in for a nice effect */
+        .card:nth-child(1) { animation-delay: 0.1s; }
+        .card:nth-child(2) { animation-delay: 0.2s; }
+        .card:nth-child(3) { animation-delay: 0.3s; }
+        .card:nth-child(4) { animation-delay: 0.4s; }
+        .card:nth-child(5) { animation-delay: 0.5s; }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Pulsing animation for the ALERT *dot* */
+        .pulse-red {
+            animation: pulse-red 1.5s infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { background-color: #EF4444; } /* red-500 */
+            50% { background-color: #DC2626; } /* red-600 */
+        }
+
+        /* Styling for active chart button */
+        .btn-chart-active {
+            background-color: #2563EB; /* bg-blue-600 */
+            color: white;
+        }
+        .btn-chart {
+            color: #334155; /* text-slate-700 */
+        }
+        .btn-chart:hover {
+            background-color: #f1f5f9; /* bg-slate-100 */
+        }
+        
+        /* Animation for connecting status */
+        .pulse-yellow {
+            animation: pulse-yellow 1.5s infinite;
+        }
+        @keyframes pulse-yellow {
+            0%, 100% { background-color: #F59E0B; } /* yellow-500 */
+            50% { background-color: #D97706; } /* yellow-600 */
+        }
+        
+        /* Styles for the Toast Notification */
+        #toast {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        
+        /* NEW: Active Nav Link Style */
+        .nav-link-active {
+            background-color: #eff6ff; /* bg-blue-50 */
+            color: #2563EB; /* text-blue-600 */
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen">
+
+    <!-- NEW: Main Layout Wrapper -->
+    <div class="flex h-screen">
+        
+        <!-- NEW: Fixed Sidebar -->
+        <aside class="w-64 bg-white shadow-lg flex flex-col h-full fixed z-20">
+            <!-- Sidebar Header -->
+            <div class="p-6 flex items-center space-x-3 border-b border-slate-200">
+                <i data-lucide="layout-dashboard" class="text-blue-600"></i>
+                <span class="text-xl font-bold text-slate-800">Smart Home</span>
+            </div>
+            
+            <!-- Navigation -->
+            <nav class="flex-1 p-4 space-y-2">
+                <a href="#" class="nav-link-active flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="home" class="w-5 h-5"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+                    <span>Devices</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                    <span>History</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            
+            <!-- NEW: Permanent Status Footer (Always Visible) -->
+            <div class="p-4 border-t border-slate-200">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase mb-2">System Status</h3>
+                
+                <!-- Connection Status -->
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-slate-500">Connection:</span>
+                    <div class="flex items-center space-x-2">
+                        <span id="conn-text" class="text-slate-600 font-medium">Connecting...</span>
+                        <span id="conn-status" class="w-3 h-3 inline-block rounded-full" title="Connecting..."></span>
+                    </div>
+                </div>
+                
+                <!-- Device Status -->
+                <div class="flex items-center justify-between text-sm mt-2">
+                    <span class="text-slate-500">Device (Living Room):</span>
+                    <div class="flex items-center space-x-2">
+                        <span id="device-status-text" class="font-semibold text-slate-600">--</span>
+                        <span id="device-status-dot" class="w-3 h-3 inline-block rounded-full bg-slate-400" title="Status"></span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- NEW: Main Content Area (with offset for sidebar) -->
+        <main class="flex-1 ml-64 min-h-screen">
+            <!-- Header for main content -->
+            <div class="p-6 border-b border-slate-200 bg-white shadow-sm sticky top-0 z-10">
+                <h1 class="text-2xl font-bold text-slate-800">Living Room Dashboard</h1>
+            </div>
+
+            <!-- Dashboard Grid (inside main content) -->
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                <!-- Card: Temperature Gauge -->
+                <div class="card rounded-lg shadow-md p-6 relative">
+                    <h2 class="text-lg font-semibold text-slate-500 text-center mb-4">Live Temperature</h2>
+                    <canvas id="tempGauge"></canvas>
+                    <div id="temp-label" class="chart-label text-blue-600">-- °C</div>
+                    
+                    <!-- UPDATED: Min/Max text added to this card -->
+                    <div class="flex justify-between text-sm text-slate-500 px-4 mt-4">
+                        <span class="text-center">
+                            Min (24h):
+                            <strong id="gauge-min-temp" class="block text-slate-700 font-semibold">-- °C</strong>
+                        </span>
+                        <span class="text-center">
+                            Max (24h):
+                            <strong id="gauge-max-temp" class="block text-slate-700 font-semibold">-- °C</strong>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Card: Humidity Gauge -->
+                <div class="card rounded-lg shadow-md p-6 relative">
+                    <h2 class="text-lg font-semibold text-slate-500 text-center mb-4">Live Humidity</h2>
+                    <canvas id="humidityGauge"></canvas>
+                    <div id="hum-label" class="chart-label text-green-600">-- %</div>
+                    
+                    <!-- UPDATED: Min/Max text added to this card -->
+                    <div class="flex justify-between text-sm text-slate-500 px-4 mt-4">
+                        <span class="text-center">
+                            Min (24h):
+                            <strong id="gauge-min-hum" class="block text-slate-700 font-semibold">-- %</strong>
+                        </span>
+                        <span class="text-center">
+                            Max (24h):
+                            <strong id="gauge-max-hum" class="block text-slate-700 font-semibold">-- %</strong>
+                        </span>
+                    </div>
+                </div>
+                
+                <!-- Card: Quick Stats -->
+                <div class="card rounded-lg shadow-md p-6 lg:col-span-1 md:col-span-2">
+                    <h2 class="text-lg font-semibold text-slate-500 mb-4 flex items-center"><i data-lucide="thermometer" class="w-5 h-5 mr-2"></i>Quick Stats (24h Sample)</h2>
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span class="text-sm text-slate-500">Current Temp</span>
+                            <span id="stat-temp" class="text-lg font-semibold text-blue-600 block">--</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-slate-500">Current Humi</span>
+                            <span id="stat-hum" class="text-lg font-semibold text-green-600 block">--</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-slate-500">Max Temp</span>
+                            <span id="max-temp" class="text-lg font-semibold text-slate-700 block">--</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-slate-500">Min Temp</span>
+                            <span id="min-temp" class="text-lg font-semibold text-slate-700 block">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive Historical Chart -->
+                <div class="card rounded-lg shadow-md p-6 md:col-span-3">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                        <h2 class="text-lg font-semibold text-slate-500 mb-3 sm:mb-0">Historical Data (Sample)</h2>
+                        <!-- Time range buttons -->
+                        <div id="chart-buttons" class="flex space-x-1 bg-slate-200 p-1 rounded-lg">
+                            <button class="btn-chart px-3 py-1 text-sm font-medium rounded-md" data-range="hour">Hour</button>
+                            <button class="btn-chart px-3 py-1 text-sm font-medium rounded-md" data-range="day">Day</button>
+                            <button class="btn-chart px-3 py-1 text-sm font-medium rounded-md" data-range="month">Month</button>
+                            <button class="btn-chart px-3 py-1 text-sm font-medium rounded-md" data-range="year">Year</button>
+                        </div>
+                    </div>
+                    <canvas id="historicalChart" height="120"></canvas>
+                </div>
+
+                <!-- Live History Chart (Spans full width) -->
+                <div class="card rounded-lg shadow-md p-6 md:col-span-3">
+                    <h2 class="text-lg font-semibold text-slate-500 mb-4">Live Sensor History (Simulated)</h2>
+                    <canvas id="liveHistoryChart" height="120"></canvas>
+                </div>
+
+            </div>
+        </main>
+    </div>
+    
+    <!-- Toast Notification element (REMOVED as mute button is gone) -->
+
+
+    <!-- 4. Main JavaScript Logic (The "Brain") -->
+    <script>
+        // --- Configuration (Matches your Arduino code) ---
+        const MIN_TEMP = 18.0;
+        const MAX_TEMP = 26.0;
+        const MAX_HUMIDITY = 60.0;
+        const MAX_LIVE_DATA_POINTS = 30; // How many points to show on the live history chart
+        const SIMULATION_SPEED = 3000; // Update every 3 seconds
+        // --- End Configuration ---
+
+        // Get all our HTML elements
+        const connStatusDot = document.getElementById('conn-status');
+        const connStatusText = document.getElementById('conn-text');
+        
+        const deviceStatusDot = document.getElementById('device-status-dot');
+        const deviceStatusText = document.getElementById('device-status-text');
+        
+        const tempLabel = document.getElementById('temp-label');
+        const humLabel = document.getElementById('hum-label');
+        const chartButtonContainer = document.getElementById('chart-buttons');
+        
+        const statTempEl = document.getElementById('stat-temp');
+        const statHumEl = document.getElementById('stat-hum');
+        const maxTempEl = document.getElementById('max-temp');
+        const minTempEl = document.getElementById('min-temp');
+        
+        // NEW: Get elements for gauge min/max text
+        const gaugeMinTempEl = document.getElementById('gauge-min-temp');
+        const gaugeMaxTempEl = document.getElementById('gauge-max-temp');
+        const gaugeMinHumEl = document.getElementById('gauge-min-hum');
+        const gaugeMaxHumEl = document.getElementById('gauge-max-hum');
+
+
+        // --- Chart.js Gauge Config ---
+        const createGaugeConfig = (color, maxVal) => ({
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [0, maxVal],
+                    backgroundColor: [color, '#e2e8f0'], // Active, Inactive (slate-200)
+                    borderWidth: 0,
+                    circumference: 270, // 3/4 circle
+                    rotation: 225, // Start at bottom-left
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1.5,
+                cutout: '80%',
+                animation: {
+                    duration: 500 // Smooth animation
+                },
+                plugins: { legend: { display: false }, tooltip: { enabled: false } }
+            }
+        });
+
+        // --- Chart.js Live History Config ---
+        const liveHistoryConfig = {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Temperature (°C)',
+                        data: [],
+                        borderColor: '#3B82F6', // Blue-500
+                        backgroundColor: '#3B82F633',
+                        fill: false,
+                        tension: 0.2
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        data: [],
+                        borderColor: '#22C55E', // Green-500
+                        backgroundColor: '#22C55E33',
+                        fill: false,
+                        tension: 0.2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { ticks: { color: '#475569' }, grid: { color: '#e2e8f0' } },
+                    y: { ticks: { color: '#475569' }, grid: { color: '#e2e8f0' } }
+                },
+                plugins: {
+                    legend: { labels: { color: '#334155' } }
+                },
+                animation: {
+                    duration: 200 // Faster update animation
+                }
+            }
+        };
+
+        // --- Historical Config ---
+        const historicalConfig = {
+            type: 'line', 
+            data: {
+                labels: [], 
+                datasets: [
+                    {
+                        label: 'Avg Temperature (°C)',
+                        data: [], 
+                        borderColor: '#3B82F6',
+                        backgroundColor: '#3B82F633',
+                        fill: true,
+                        tension: 0.2,
+                        yAxisID: 'yTemp'
+                    },
+                    {
+                        label: 'Avg Humidity (%)',
+                        data: [], 
+                        borderColor: '#22C55E',
+                        backgroundColor: '#22C55E33',
+                        fill: true,
+                        tension: 0.2,
+                        yAxisID: 'yHum'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { ticks: { color: '#475569' }, grid: { color: '#e2e8f0' } },
+                    yTemp: { 
+                        type: 'linear',
+                        position: 'left',
+                        ticks: { color: '#3B82F6', callback: (value) => `${value}°C` },
+                        grid: { color: '#e2e8f0' }
+                    },
+                    yHum: { 
+                        type: 'linear',
+                        position: 'right',
+                        ticks: { color: '#22C55E', callback: (value) => `${value}%` },
+                        grid: { display: false } 
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#334155' } }
+                }
+            }
+        };
+
+        // --- Initialize Charts ---
+        const tempGauge = new Chart(document.getElementById('tempGauge'), createGaugeConfig('#3B82F6', 50));
+        const humidityGauge = new Chart(document.getElementById('humidityGauge'), createGaugeConfig('#22C55E', 100));
+        const liveHistoryChart = new Chart(document.getElementById('liveHistoryChart'), liveHistoryConfig);
+        const historicalChart = new Chart(document.getElementById('historicalChart'), historicalConfig);
+
+
+        // --- Connection Status Management ---
+        let connectionState = 'connecting'; // 'connecting', 'connected', 'lost'
+
+        function updateConnectionStatus(newStatus) {
+            connectionState = newStatus;
+            connStatusDot.classList.remove('pulse-yellow', 'bg-green-500', 'bg-red-500', 'bg-slate-400');
+
+            switch (newStatus) {
+                case 'connected':
+                    connStatusText.innerText = 'Connected (Simulated)';
+                    connStatusDot.classList.add('bg-green-500');
+                    connStatusDot.title = 'Connected';
+                    break;
+                case 'lost':
+                    connStatusText.innerText = 'Connection Lost!';
+                    connStatusDot.classList.add('bg-red-500');
+                    connStatusDot.title = 'Connection Lost';
+                    break;
+                case 'connecting':
+                default:
+                    connStatusText.innerText = 'Connecting...';
+                    connStatusDot.classList.add('pulse-yellow');
+                    connStatusDot.title = 'Connecting...';
+                    break;
+            }
+        }
+
+        // --- Function to create historical sample data ---
+        function updateHistoricalChart(timeRange) {
+            console.log(`Generating sample data for: ${timeRange}`);
+            const newLabels = [];
+            const newTempData = [];
+            const newHumData = [];
+
+            // Helper to generate a random trend
+            const generateTrend = (numPoints, baseVal, seasonalFactor, noise) => {
+                const data = [];
+                for (let i = 0; i < numPoints; i++) {
+                    let seasonalEffect = Math.sin((i / (numPoints / seasonalFactor)) * Math.PI) * 8 + baseVal;
+                    let randomNoise = (Math.random() - 0.5) * noise;
+                    data.push((seasonalEffect + randomNoise).toFixed(1));
+                }
+                return data;
+            };
+
+            switch (timeRange) {
+                case 'hour':
+                    for (let i = 0; i < 60; i += 5) { newLabels.push(`-${60-i}m`); } // Labels: -60m, -55m...
+                    newTempData.push(...generateTrend(12, 22, 1, 1));
+                    newHumData.push(...generateTrend(12, 45, 1, 3));
+                    break;
+                case 'day':
+                    for (let i = 0; i < 24; i += 2) { newLabels.push(`${String(i).padStart(2, '0')}:00`); } // Labels: 00:00, 02:00...
+                    newTempData.push(...generateTrend(12, 20, 1, 2));
+                    newHumData.push(...generateTrend(12, 50, 1, 5));
+                    break;
+                case 'month':
+                    for (let i = 1; i <= 30; i += 3) { newLabels.push(`Day ${i}`); } // Labels: Day 1, Day 4...
+                    newTempData.push(...generateTrend(10, 18, 2, 3));
+                    newHumData.push(...generateTrend(10, 55, 2, 5));
+                    break;
+                case 'year':
+                default:
+                    newLabels.push('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
+                    newTempData.push(...generateTrend(12, 15, 2, 2)); // Strong seasonal trend
+                    newHumData.push(...generateTrend(12, 50, 1, 5));
+                    break;
+            }
+
+            // Update chart data
+            historicalChart.data.labels = newLabels;
+            historicalChart.data.datasets[0].data = newTempData;
+            historicalChart.data.datasets[1].data = newHumData;
+            historicalChart.update();
+
+            // Update active button style
+            document.querySelectorAll('#chart-buttons .btn-chart').forEach(btn => {
+                btn.classList.remove('btn-chart-active');
+                if (btn.dataset.range === timeRange) {
+                    btn.classList.add('btn-chart-active');
+                }
+            });
+        }
+
+        // --- Data Simulation (Replaces MQTT) ---
+        let sim_temp = 22.5;
+        let sim_hum = 45.0;
+        let sim_status = "normal";
+        let maxTempToday = 22.5;
+        let minTempToday = 22.5;
+        let maxHumToday = 45.0; // NEW
+        let minHumToday = 45.0; // NEW
+
+        function simulateLiveData() {
+            
+            // Simulate a connection drop (5% chance)
+            if (connectionState === 'connected' && Math.random() < 0.05) {
+                updateConnectionStatus('lost');
+                console.log("SIMULATOR: Connection lost!");
+                setTimeout(() => {
+                    if(connectionState === 'lost') {
+                         updateConnectionStatus('connected');
+                         console.log("SIMULATOR: Connection re-established.");
+                    }
+                }, 5000);
+                return; 
+            }
+            if (connectionState !== 'connected') return;
+
+            // Make data "walk" randomly
+            sim_temp += (Math.random() - 0.5) * 0.5; 
+            sim_hum += (Math.random() - 0.5) * 1;   
+
+            // Simulate a "spike" event
+            if (Math.random() < 0.1) { // 10% chance
+                console.log("Simulating an alert spike!");
+                sim_hum = 65.0; // Force an alert
+            }
+
+            // Keep data in realistic bounds
+            if (sim_temp > 40) sim_temp = 40;
+            if (sim_temp < 10) sim_temp = 10;
+            if (sim_hum > 70) sim_hum = 70;
+            if (sim_hum < 30) sim_hum = 30;
+            
+            // Update 24h min/max
+            if (sim_temp > maxTempToday) maxTempToday = sim_temp;
+            if (sim_temp < minTempToday) minTempToday = sim_temp;
+            if (sim_hum > maxHumToday) maxHumToday = sim_hum; // NEW
+            if (sim_hum < minHumToday) minHumToday = sim_hum; // NEW
+
+            // Check alert logic (same as your Arduino)
+            if (sim_temp < MIN_TEMP || sim_temp > MAX_TEMP || sim_hum > MAX_HUMIDITY) {
+                sim_status = "alert";
+            } else {
+                sim_status = "normal";
+            }
+            
+            const data = { temperature: sim_temp, humidity: sim_hum, status: sim_status };
+            updateLiveDashboard(data);
+        }
+        
+        // --- Dashboard Update Function ---
+        function updateLiveDashboard(data) {
+            try {
+                if(connectionState !== 'connected') updateConnectionStatus('connected');
+
+                const temp = data.temperature;
+                const hum = data.humidity;
+                const status = data.status;
+
+                // 1. Update Gauges
+                tempGauge.data.datasets[0].data = [temp, 50 - temp];
+                tempLabel.innerText = `${temp.toFixed(1)}°C`;
+                tempGauge.update('none');
+
+                humidityGauge.data.datasets[0].data = [hum, 100 - hum];
+                humLabel.innerText = `${hum.toFixed(1)}%`;
+                humidityGauge.update('none');
+                
+                // 2. Update Status Panel (in Sidebar)
+                deviceStatusDot.classList.remove('bg-slate-400', 'bg-green-500', 'pulse-red');
+
+                if (status === 'alert') {
+                    // Set text and ALERT styles
+                    deviceStatusText.innerText = 'ALERT';
+                    deviceStatusText.classList.add('text-red-600');
+                    deviceStatusText.classList.remove('text-slate-600', 'text-green-600');
+                    deviceStatusDot.classList.add('pulse-red'); // Make dot pulse
+                    
+                } else if (status === 'normal') {
+                    // Set text and NORMAL styles
+                    deviceStatusText.innerText = 'Online';
+                    deviceStatusText.classList.add('text-green-600');
+                    deviceStatusText.classList.remove('text-slate-600', 'text-red-600');
+                    deviceStatusDot.classList.add('bg-green-500');
+                }
+
+                // 3. Update Quick Stats
+                statTempEl.innerText = `${temp.toFixed(1)}°C`;
+                statHumEl.innerText = `${hum.toFixed(1)}%`;
+                maxTempEl.innerText = `${maxTempToday.toFixed(1)} °C`;
+                minTempEl.innerText = `${minTempToday.toFixed(1)} °C`;
+                
+                // NEW: Update gauge card's min/max text
+                gaugeMaxTempEl.innerText = `${maxTempToday.toFixed(1)} °C`;
+                gaugeMinTempEl.innerText = `${minTempToday.toFixed(1)} °C`;
+                gaugeMaxHumEl.innerText = `${maxHumToday.toFixed(1)} %`;
+                gaugeMinHumEl.innerText = `${minHumToday.toFixed(1)} %`;
+
+
+                // 4. Update Live History Chart
+                const now = new Date().toLocaleTimeString();
+                liveHistoryChart.data.labels.push(now);
+                liveHistoryChart.data.datasets[0].data.push(temp.toFixed(1));
+                liveHistoryChart.data.datasets[1].data.push(hum.toFixed(1));
+
+                // Limit history points
+                if (liveHistoryChart.data.labels.length > MAX_LIVE_DATA_POINTS) {
+                    liveHistoryChart.data.labels.shift();
+                    liveHistoryChart.data.datasets[0].data.shift();
+                    liveHistoryChart.data.datasets[1].data.shift();
+                }
+                liveHistoryChart.update('none');
+
+            } catch (e) {
+                console.error("Error updating dashboard:", e);
+            }
+        }
+        
+        // --- Event Listeners ---
+        
+        // Chart buttons
+        chartButtonContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn-chart')) {
+                const range = e.target.dataset.range;
+                updateHistoricalChart(range);
+            }
+        });
+
+
+        // --- Start the App ---
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            
+            updateConnectionStatus('connecting');
+            
+            setTimeout(() => {
+                updateConnectionStatus('connected');
+                
+                simulateLiveData(); // Run once immediately
+                setInterval(simulateLiveData, SIMULATION_SPEED); 
+            }, 2000); 
+
+            updateHistoricalChart('year'); // Default to 'year' view
+        });
+        
+    </script>
+
+</body>
+</html>
