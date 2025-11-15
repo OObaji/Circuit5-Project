@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circuit 5</title>
+    
+    <!-- 1. Load Tailwind CSS (Styling/Utility Framework) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Load Chart.js (for our gauges and charts) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- 3. Load Lucide icons (Vector Icons) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        /* (CSS styles remain the same for aesthetics and responsiveness) */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+        }
+        .chart-label {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 1.75rem; font-weight: 600;
+        }
+        @media (min-width: 768px) { .chart-label { font-size: 2.5rem; } }
+        .card { background-color: #ffffff; }
+        .pulse-red { animation: pulse-red 1.5s infinite; }
+        @keyframes pulse-red { 0%, 100% { background-color: #EF4444; } 50% { background-color: #DC2626; } }
+        .btn-chart-active { background-color: #2563EB; color: white !important; }
+        .btn-chart { color: #334155; }
+        .btn-chart:hover { background-color: #f1f5f9; }
+        .nav-link-active { background-color: #eff6ff; color: #2563EB; font-weight: 600; }
+        .nav-link:hover { background-color: #f8fafc; }
+        .pulse-shadow-red { animation: pulse-shadow-red 1.5s infinite; }
+        @keyframes pulse-shadow-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } }
+        .alert-pulse-border { border: 4px solid transparent; animation: alert-pulse 1.5s infinite; }
+        @keyframes alert-pulse { 0% { border-color: rgba(239, 68, 68, 0.3); } 50% { border-color: rgba(239, 68, 68, 0.7); } 100% { border-color: rgba(239, 68, 68, 0.3); } }
+        .toggle-checkbox:checked + .toggle-label { background-color: #2563EB; border-color: #2563EB; }
+        .toggle-checkbox:checked + .toggle-label .toggle-circle { transform: translateX(16px); border-color: #2563EB; }
+        .toggle-circle { transition: transform 0.2s ease-in-out; }
+        .toggle-label { transition: all 0.2s ease-in-out; }
+        #liveHistoryChart, #historicalChart { max-height: 250px; }
+        @media (min-width: 1024px) { #liveHistoryChart, #historicalChart { max-height: 300px; } }
+        .modal { transition: opacity 0.3s ease-out, transform 0.3s ease-out; }
+        .modal-active { opacity: 1; transform: translateY(0); }
+        .modal-inactive { opacity: 0; transform: translateY(-20px); pointer-events: none; }
+    </style>
+</head>
+<body class="text-slate-800 bg-slate-100 min-h-screen">
+
+    <!-- Custom Modal 1: Device Removal Confirmation (Static Placeholder) -->
+    <div id="confirmation-modal" class="modal modal-inactive fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-11/12 max-w-sm">
+            <h3 class="text-xl font-bold text-red-600 mb-4 flex items-center">
+                <i data-lucide="skull" class="w-6 h-6 mr-2"></i>
+                Confirm Device Removal
+            </h3>
+            <p class="text-slate-700 mb-6">
+                This is a static demo. In a live system, this would permanently delete all data.
+            </p>
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-remove-btn" class="px-4 py-2 text-slate-700 bg-slate-200 hover:bg-slate-300 rounded-lg font-medium transition-colors">
+                    Cancel
+                </button>
+                <button id="confirm-remove-btn" class="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors">
+                    Remove Permanently
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Custom Modal 2: Alert Deactivation Warning (Static Placeholder) -->
+    <div id="alert-confirm-modal" class="modal modal-inactive fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-11/12 max-w-sm">
+            <h3 class="text-xl font-bold text-yellow-600 mb-4 flex items-center">
+                <i data-lucide="bell-off" class="w-6 h-6 mr-2"></i>
+                Warning: Disable Alerts?
+            </h3>
+            <p class="text-slate-700 mb-6">
+                This is a static demo. This toggle normally controls the real-time visual alerts.
+            </p>
+            <p class="text-sm text-red-500 mb-6 font-semibold">
+                Are you sure you want to proceed?
+            </p>
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-alert-disable-btn" class="px-4 py-2 text-slate-700 bg-slate-200 hover:bg-slate-300 rounded-lg font-medium transition-colors">
+                    Cancel
+                </button>
+                <button id="confirm-alert-disable-btn" class="px-4 py-2 text-white bg-yellow-600 hover:bg-yellow-700 rounded-lg font-medium transition-colors">
+                    Disable Alerts
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Mobile Menu Overlay -->
+    <div id="mobile-menu-overlay" class="fixed inset-0 bg-black/50 z-40 hidden transition-opacity duration-300 opacity-0 lg:hidden"></div>
+
+    <!-- Main Layout Wrapper -->
+    <div class="flex min-h-screen">
+        
+        <!-- Responsive Sidebar -->
+        <aside id="mobile-sidebar" class="w-64 bg-white shadow-xl flex flex-col h-full fixed inset-y-0 left-0 transform -translate-x-full lg:translate-x-0 transition-transform duration-300 z-50">
+            <!-- Sidebar Header -->
+            <div class="p-6 flex items-center space-x-3 border-b border-slate-200 flex-shrink-0">
+                <i data-lucide="layout-dashboard" class="text-blue-600"></i>
+                <span class="text-xl font-bold text-slate-800">Circuit 5</span>
+                <!-- Close Button for Mobile -->
+                <button id="close-menu-btn" class="lg:hidden ml-auto p-1 rounded-full text-slate-500 hover:bg-slate-100 transition-colors">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <!-- Navigation -->
+            <nav id="sidebar-nav" class="flex-1 p-4 space-y-2 overflow-y-auto">
+                <a href="#dashboard" class="nav-link nav-link-active flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-700">
+                    <i data-lucide="home" class="w-5 h-5"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#devices" class="nav-link flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-700">
+                    <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+                    <span>Devices</span>
+                </a>
+                <a href="#history" class="nav-link flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-700">
+                    <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                    <span>History</span>
+                </a>
+                <a href="#settings" class="nav-link flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-700">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            
+            <!-- Permanent Status Footer (Static Placeholder) -->
+            <div class="p-4 border-t border-slate-200 flex-shrink-0">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase mb-2">System Status (Demo)</h3>
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-slate-500">Connection:</span>
+                    <div class="flex items-center space-x-2">
+                        <span id="conn-text" class="text-slate-600 font-medium">Static Demo</span>
+                        <span id="conn-status" class="w-3 h-3 inline-block rounded-full bg-slate-400" title="Static Demo"></span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between text-sm mt-2">
+                    <span class="text-slate-500">Device (Living Room):</span>
+                    <div class="flex items-center space-x-2">
+                        <span id="device-status-text" class="font-semibold text-green-600">Online</span>
+                        <span id="device-status-dot" class="w-3 h-3 inline-block rounded-full bg-green-500" title="Online"></span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 w-full lg:ml-64 min-h-screen">
+            
+            <div id="alert-container" class="min-h-full">
+            
+                <!-- Page 1: Dashboard -->
+                <div id="page-dashboard" class="page">
+                    <div class="p-4 sm:p-6 border-b border-slate-200 bg-white shadow-sm sticky top-0 z-10">
+                        <div class="flex items-center">
+                            <button id="mobile-menu-btn-dashboard" class="lg:hidden mr-4 p-2 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors">
+                                <i data-lucide="menu" class="w-6 h-6"></i>
+                            </button>
+                            <h1 class="text-xl sm:text-2xl font-bold text-slate-800">Living Room Dashboard</h1>
+                        </div>
+                    </div>
+                    
+                    <!-- Persistent Alert Notification Banner (Static Placeholder) -->
+                    <div id="alert-banner" class="hidden mx-4 sm:mx-6 mt-4 p-4 bg-red-100 border border-red-400 text-red-800 rounded-lg shadow-md" role="alert">
+                        <div class="flex items-start justify-between">
+                            <div class="flex items-center">
+                                <i data-lucide="alert-triangle" class="w-5 h-5 mr-3 flex-shrink-0"></i>
+                                <span id="alert-message" class="font-medium text-sm sm:text-base">🚨 ALERT: Static simulation active.</span>
+                            </div>
+                            <button id="alert-dismiss-btn" class="p-1 -mr-1 rounded-md hover:bg-red-200 transition-colors">
+                                <i data-lucide="x" class="w-5 h-5 text-red-600"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Dashboard Grid -->
+                    <div class="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                        <!-- Card: Temperature Gauge -->
+                        <div class="card rounded-lg shadow-md p-6 relative">
+                            <h2 class="text-lg font-semibold text-slate-500 text-center mb-4">Live Temperature</h2>
+                            <div class="w-full max-w-sm mx-auto">
+                                <canvas id="tempGauge"></canvas>
+                                <div id="temp-label" class="chart-label text-blue-600">24.5 °C</div>
+                            </div>
+                            <div class="flex justify-between text-sm text-slate-500 px-4 mt-4">
+                                <span class="text-center">
+                                    Min (Threshold): <strong id="gauge-min-temp" class="block text-slate-700 font-semibold">18.0 °C</strong>
+                                </span>
+                                <span class="text-center">
+                                    Max (Threshold): <strong id="gauge-max-temp" class="block text-slate-700 font-semibold">26.0 °C</strong>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Card: Humidity Gauge -->
+                        <div class="card rounded-lg shadow-md p-6 relative">
+                            <h2 class="text-lg font-semibold text-slate-500 text-center mb-4">Live Humidity</h2>
+                            <div class="w-full max-w-sm mx-auto">
+                                <canvas id="humidityGauge"></canvas>
+                                <div id="hum-label" class="chart-label text-green-600">48.2 %</div>
+                            </div>
+                            <div class="flex justify-between text-sm text-slate-500 px-4 mt-4">
+                                <span class="text-center">
+                                    Min (Limit): <strong id="gauge-min-hum" class="block text-slate-700 font-semibold">0.0 %</strong>
+                                </span>
+                                <span class="text-center">
+                                    Max (Threshold): <strong id="gauge-max-hum" class="block text-slate-700 font-semibold">60.0 %</strong>
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <!-- Card: Quick Stats -->
+                        <div class="card rounded-lg shadow-md p-6 lg:col-span-1 md:col-span-2">
+                            <h2 class="text-lg font-semibold text-slate-500 mb-4 flex items-center"><i data-lucide="thermometer" class="w-5 h-5 mr-2"></i>Quick Stats (Observed)</h2>
+                            <div class="space-y-3">
+                                <div class="flex justify-between border-b pb-2">
+                                    <span class="text-sm text-slate-500">Current Temp</span>
+                                    <span id="stat-temp" class="text-lg font-bold text-blue-600 block">24.5 °C</span>
+                                </div>
+                                <div class="flex justify-between border-b pb-2">
+                                    <span class="text-sm text-slate-500">Current Humi</span>
+                                    <span id="stat-hum" class="text-lg font-bold text-green-600 block">48.2 %</span>
+                                </div>
+                                <div class="flex justify-between pt-2">
+                                    <span class="text-sm text-slate-500">Observed Max Temp</span>
+                                    <span id="max-temp" class="text-lg font-semibold text-slate-700 block">26.1 °C</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-sm text-slate-500">Observed Min Temp</span>
+                                    <span id="min-temp" class="text-lg font-semibold text-slate-700 block">23.8 °C</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Live History Chart (Full width) -->
+                        <div class="card rounded-lg shadow-md p-6 md:col-span-full lg:col-span-3">
+                            <h2 class="text-lg font-semibold text-slate-500 mb-4">Live Sensor History (Simulated)</h2>
+                            <canvas id="liveHistoryChart"></canvas>
+                        </div>
+
+                    </div>
+                </div> <!-- End Page 1: Dashboard -->
+
+                <!-- Page 2: Devices -->
+                <div id="page-devices" class="page hidden">
+                    <div class="p-4 sm:p-6 border-b border-slate-200 bg-white shadow-sm sticky top-0 z-10">
+                        <div class="flex justify-between items-center">
+                            <button id="mobile-menu-btn-devices" class="lg:hidden mr-4 p-2 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors">
+                                <i data-lucide="menu" class="w-6 h-6"></i>
+                            </button>
+                            <h1 class="text-xl sm:text-2xl font-bold text-slate-800 flex-1">Device Management</h1>
+                            <button id="add-device-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-3 sm:px-4 rounded-lg flex items-center space-x-2 transition-all text-sm">
+                                <i data-lucide="plus" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                                <span>Add Device</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                        <!-- NEW: Device Card: System Power (Static Toggle) -->
+                        <div class="card rounded-lg shadow-md p-6">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="flex items-center space-x-3">
+                                    <i data-lucide="power" class="w-6 h-6 text-slate-700"></i>
+                                    <h2 class="text-xl font-semibold text-slate-700">System Power (Static)</h2>
+                                </div>
+                                <span id="system-power-status-dot" class="w-3 h-3 rounded-full bg-green-500 mt-2" title="Static"></span>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500">Control Unit</span>
+                                    <span id="system-power-status-text" class="font-semibold text-green-600">ON</span>
+                                </div>
+                            </div>
+                            <div class="mt-4 pt-4 border-t border-slate-200">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-medium text-slate-700">Toggle System ON/OFF</span>
+                                    <div class="relative inline-block w-10 align-middle">
+                                        <input type="checkbox" name="toggle-system" id="toggle-system" class="toggle-checkbox absolute opacity-0 w-0 h-0" checked/>
+                                        <label for="toggle-system" class="toggle-label block h-6 w-10 rounded-full bg-gray-300 cursor-pointer transition-colors duration-200 ease-in-out">
+                                            <span class="toggle-circle absolute left-0 top-0 w-6 h-6 rounded-full bg-white border-4 border-gray-300 shadow transform transition-transform duration-200 ease-in-out"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Device Card: Living Room (Static Data) -->
+                        <div id="device-card-livingroom" class="card rounded-lg shadow-md p-6 transition-all duration-300">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="flex items-center space-x-3">
+                                    <i data-lucide="home" class="w-6 h-6 text-blue-500"></i>
+                                    <h2 class="text-xl font-semibold text-slate-700">Living Room Sensor</h2>
+                                </div>
+                                <span id="device-card-status-dot" class="w-3 h-3 rounded-full bg-green-500 mt-2" title="Online"></span>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500">Status</span>
+                                    <span id="device-card-status-text" class="font-semibold text-green-600">Online</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500">Temperature</span>
+                                    <span id="device-card-temp" class="font-semibold text-slate-600">24.5 °C</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500">Humidity</span>
+                                    <span id="device-card-hum" class="font-semibold text-slate-600">48.2 %</span>
+                                </div>
+                            </div>
+                            <div class="mt-4 pt-4 border-t border-slate-200 flex justify-between space-x-3">
+                                <button id="device-card-mute-btn" class="hidden bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center space-x-2 transition-all text-sm flex-1 justify-center" title="Mute Buzzer">
+                                    <i data-lucide="bell-off" class="w-4 h-4"></i>
+                                    <span>Mute</span>
+                                </button>
+                                <button id="remove-device-btn" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg flex items-center space-x-2 transition-all text-sm flex-1 justify-center">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    <span>Remove Device</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Device Card: Bedroom (Sample, Placeholder) -->
+                        <div class="card rounded-lg shadow-md p-6 opacity-60">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="flex items-center space-x-3">
+                                    <i data-lucide="bed" class="w-6 h-6 text-slate-400"></i>
+                                    <h2 class="text-xl font-semibold text-slate-700">Bedroom Sensor</h2>
+                                </div>
+                                <span class="w-3 h-3 rounded-full bg-slate-400 mt-2" title="Offline"></span>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500">Status</span>
+                                    <span class="font-semibold text-slate-500">Offline</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500">Temperature</span>
+                                    <span class="font-semibold text-slate-500">-- °C</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500">Humidity</span>
+                                    <span class="font-semibold text-slate-500">-- %</span>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div> <!-- End Page 2: Devices -->
+
+                <!-- Page 3: History -->
+                <div id="page-history" class="page hidden">
+                    <div class="p-4 sm:p-6 border-b border-slate-200 bg-white shadow-sm sticky top-0 z-10">
+                        <div class="flex items-center">
+                            <button id="mobile-menu-btn-history" class="lg:hidden mr-4 p-2 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors">
+                                <i data-lucide="menu" class="w-6 h-6"></i>
+                            </button>
+                            <h1 class="text-xl sm:text-2xl font-bold text-slate-800">History & Analytics</h1>
+                        </div>
+                    </div>
+                    <div class="p-4 sm:p-6">
+                        <div class="card rounded-lg shadow-md p-6">
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                                <h2 class="text-lg font-semibold text-slate-500 mb-3 sm:mb-0">Historical Data (Simulated)</h2>
+                                <div id="chart-buttons" class="flex space-x-1 bg-slate-200 p-1 rounded-lg w-full sm:w-auto justify-stretch">
+                                    <button class="btn-chart flex-1 px-3 py-1 text-sm font-medium rounded-md" data-range="hour">Hour</button>
+                                    <button class="btn-chart flex-1 px-3 py-1 text-sm font-medium rounded-md" data-range="day">Day</button>
+                                    <button class="btn-chart flex-1 px-3 py-1 text-sm font-medium rounded-md" data-range="month">Month</button>
+                                    <button class="btn-chart flex-1 px-3 py-1 text-sm font-medium rounded-md" data-range="year">Year</button>
+                                </div>
+                            </div>
+                            <canvas id="historicalChart"></canvas>
+                        </div>
+                    </div>
+                </div> <!-- End Page 3: History -->
+                
+                <!-- Page 4: Settings -->
+                <div id="page-settings" class="page hidden">
+                    <div class="p-4 sm:p-6 border-b border-slate-200 bg-white shadow-sm sticky top-0 z-10">
+                        <div class="flex items-center">
+                            <button id="mobile-menu-btn-settings" class="lg:hidden mr-4 p-2 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors">
+                                <i data-lucide="menu" class="w-6 h-6"></i>
+                            </button>
+                            <h1 class="text-xl sm:text-2xl font-bold text-slate-800">Settings</h1>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Card: Alert Thresholds -->
+                        <div class="card rounded-lg shadow-md p-6">
+                            <h2 class="text-xl font-semibold text-slate-700 mb-4">Alert Thresholds</h2>
+                            <div class="space-y-4">
+                                <!-- Max Temp Slider -->
+                                <div>
+                                    <label for="max-temp-slider" class="flex justify-between text-sm font-medium text-slate-600">
+                                        <span>Max Temperature</span>
+                                        <span id="max-temp-val" class="font-bold">26.0°C</span>
+                                    </label>
+                                    <input id="max-temp-slider" type="range" min="20" max="40" step="0.5" class="w-full mt-1 accent-blue-600">
+                                </div>
+                                <!-- Min Temp Slider -->
+                                <div>
+                                    <label for="min-temp-slider" class="flex justify-between text-sm font-medium text-slate-600">
+                                        <span>Min Temperature</span>
+                                        <span id="min-temp-val" class="font-bold">18.0°C</span>
+                                    </label>
+                                    <input id="min-temp-slider" type="range" min="10" max="25" step="0.5" class="w-full mt-1 accent-blue-600">
+                                </div>
+                                <!-- Max Humi Slider -->
+                                <div>
+                                    <label for="max-humi-slider" class="flex justify-between text-sm font-medium text-slate-600">
+                                        <span>Max Humidity</span>
+                                        <span id="max-humi-val" class="font-bold">60.0%</span>
+                                    </label>
+                                    <input id="max-humi-slider" type="range" min="40" max="80" step="1" class="w-full mt-1 accent-green-600">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Card: Notifications -->
+                        <div class="card rounded-lg shadow-md p-6">
+                            <h2 class="text-xl font-semibold text-slate-700 mb-4">Notification Preferences</h2>
+                            <div class="space-y-4">
+                                <!-- Push Notifications (Alert Master Control) -->
+                                <div class="flex justify-between items-center">
+                                    <span class="font-medium text-slate-700">Push Notifications (Alert Control)</span>
+                                    <div class="relative inline-block w-10 align-middle">
+                                        <input type="checkbox" name="toggle" id="toggle-push" class="toggle-checkbox absolute opacity-0 w-0 h-0" checked/>
+                                        <label for="toggle-push" class="toggle-label block h-6 w-10 rounded-full bg-gray-300 cursor-pointer transition-colors duration-200 ease-in-out">
+                                            <span class="toggle-circle absolute left-0 top-0 w-6 h-6 rounded-full bg-white border-4 border-gray-300 shadow transform transition-transform duration-200 ease-in-out"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Save Button -->
+                        <div class="md:col-span-2">
+                            <button id="save-settings-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg flex items-center space-x-2 transition-all w-full justify-center shadow-lg hover:shadow-xl">
+                                <i data-lucide="save" class="w-5 h-5"></i>
+                                <span>Save All Settings</span>
+                            </button>
+                        </div>
+
+                    </div>
+                </div> <!-- End Page 4: Settings -->
+
+            </div> <!-- End #alert-container -->
+
+        </main>
+    </div>
+    
+    <!-- Toast Notification element -->
+    <div id="toast" class="fixed bottom-4 right-4 sm:bottom-10 sm:right-10 z-50 bg-blue-600 text-white py-3 px-5 rounded-lg shadow-xl opacity-0 transform translate-y-5">
+        Toast message
+    </div>
+
+
+    <!-- 4. Main JavaScript Logic (The "Brain") -->
+    <script>
+        // --- Configuration (Static Defaults) ---
+        let MIN_TEMP = 18.0;
+        let MAX_TEMP = 26.0;
+        let MAX_HUMIDITY = 60.0;
+        
+        // ALERT STATE VARIABLE
+        let isAlertActive = false;
+        
+        // SYSTEM POWER STATE (Always ON in static mode)
+        let isSystemOn = true;
+        
+        // Alert Notification Master Switch (Controlled by Push Toggle)
+        let isAlertNotificationOn = true; 
+        
+        const MAX_LIVE_DATA_POINTS = 30;
+        // --- End Configuration ---
+
+        // Get all our HTML elements
+        const connStatusDot = document.getElementById('conn-status');
+        const connStatusText = document.getElementById('conn-text');
+        
+        // Sidebar status elements
+        const deviceStatusDot = document.getElementById('device-status-dot');
+        const deviceStatusText = document.getElementById('device-status-text');
+        
+        // Dashboard page elements
+        const tempLabel = document.getElementById('temp-label');
+        const humLabel = document.getElementById('hum-label');
+        const statTempEl = document.getElementById('stat-temp');
+        const statHumEl = document.getElementById('stat-hum');
+        const maxTempEl = document.getElementById('max-temp');
+        const minTempEl = document.getElementById('min-temp');
+        const gaugeMinTempEl = document.getElementById('gauge-min-temp');
+        const gaugeMaxTempEl = document.getElementById('gauge-max-temp');
+        const gaugeMinHumEl = document.getElementById('gauge-min-hum');
+        const gaugeMaxHumEl = document.getElementById('gauge-max-hum');
+        
+        // History Chart elements
+        const chartButtonContainer = document.getElementById('chart-buttons');
+
+        // Devices page elements
+        const deviceCardLivingRoom = document.getElementById('device-card-livingroom');
+        const deviceCardStatusDot = document.getElementById('device-card-status-dot');
+        const deviceCardStatusText = document.getElementById('device-card-status-text');
+        const deviceCardTemp = document.getElementById('device-card-temp');
+        const deviceCardHum = document.getElementById('device-card-hum');
+        const deviceCardMuteBtn = document.getElementById('device-card-mute-btn');
+        const removeDeviceBtn = document.getElementById('remove-device-btn');
+        
+        // Other interactive elements
+        const toast = document.getElementById('toast');
+        const addDeviceBtn = document.getElementById('add-device-btn');
+        
+        // NEW: Alert Container and Banner elements
+        const alertContainer = document.getElementById('alert-container');
+        const alertBanner = document.getElementById('alert-banner');
+        const alertMessageEl = document.getElementById('alert-message');
+        const alertDismissBtn = document.getElementById('alert-dismiss-btn');
+        
+        // NEW: System Power elements
+        const toggleSystemEl = document.getElementById('toggle-system');
+        const systemPowerStatusTextEl = document.getElementById('system-power-status-text');
+        const systemPowerStatusDotEl = document.getElementById('system-power-status-dot');
+        
+        // NEW: Modal elements (Device Removal and Alert Disable)
+        const confirmationModal = document.getElementById('confirmation-modal');
+        const confirmRemoveBtn = document.getElementById('confirm-remove-btn');
+        const cancelRemoveBtn = document.getElementById('cancel-remove-btn');
+        
+        const alertConfirmModal = document.getElementById('alert-confirm-modal');
+        const confirmAlertDisableBtn = document.getElementById('confirm-alert-disable-btn');
+        const cancelAlertDisableBtn = document.getElementById('cancel-alert-disable-btn');
+        
+        // Settings Push Toggle
+        const togglePushEl = document.getElementById('toggle-push');
+
+
+        // Page navigation elements
+        const pages = document.querySelectorAll('.page');
+        const navLinks = document.querySelectorAll('.nav-link');
+        
+        // Settings Page Elements
+        const maxTempSlider = document.getElementById('max-temp-slider');
+        const minTempSlider = document.getElementById('min-temp-slider');
+        const maxHumiSlider = document.getElementById('max-humi-slider');
+        const maxTempVal = document.getElementById('max-temp-val');
+        const minTempVal = document.getElementById('min-temp-val');
+        const maxHumiVal = document.getElementById('max-humi-val');
+        const saveSettingsBtn = document.getElementById('save-settings-btn');
+        
+        // Mobile menu elements
+        const mobileSidebar = document.getElementById('mobile-sidebar');
+        const mobileMenuOverlay = document.getElementById('mobile-menu-overlay');
+        const mobileMenuButtons = document.querySelectorAll('[id^="mobile-menu-btn"]');
+        const closeMenuBtn = document.getElementById('close-menu-btn');
+        
+        // Min/Max tracking - Tracks observed sensor data, not thresholds (Static Seed)
+        let maxTempToday = 26.1;
+        let minTempToday = 23.8;
+        let maxHumToday = 55.0;
+        let minHumToday = 45.0;
+
+
+        // --- Chart.js Global Defaults ---
+        function updateChartTheme() {
+            Chart.defaults.color = '#475569';
+            Chart.defaults.borderColor = '#e2e8f0';
+
+            Object.values(Chart.instances).forEach(chart => {
+                chart.update('none');
+            });
+        }
+
+
+        // --- Chart.js Gauge Config ---
+        const createGaugeConfig = (color, maxVal) => ({
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [0, maxVal],
+                    backgroundColor: [color, '#e2e8f0'],
+                    borderWidth: 0,
+                    circumference: 270,
+                    rotation: 225,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1,
+                cutout: '80%',
+                animation: { duration: 0 },
+                plugins: { legend: { display: false }, tooltip: { enabled: false } }
+            }
+        });
+
+        // --- Chart.js Live History Config ---
+        const liveHistoryConfig = {
+            type: 'line',
+            data: {
+                labels: Array(MAX_LIVE_DATA_POINTS).fill(''),
+                datasets: [
+                    { label: 'Temperature (°C)', data: Array(MAX_LIVE_DATA_POINTS).fill(25), borderColor: '#3B82F6', backgroundColor: '#3B82F633', fill: false, tension: 0.2 },
+                    { label: 'Humidity (%)', data: Array(MAX_LIVE_DATA_POINTS).fill(50), borderColor: '#22C55E', backgroundColor: '#22C55E33', fill: false, tension: 0.2 }
+                ]
+            },
+            options: { responsive: true, scales: { x: {}, y: {} }, plugins: { legend: { labels: {} } }, animation: { duration: 200 } }
+        };
+
+        // --- Historical Config ---
+        const historicalConfig = {
+            type: 'line', 
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], 
+                datasets: [
+                    { label: 'Avg Temperature (°C)', data: [15, 17, 20, 25, 28, 30, 29, 27, 24, 21, 18, 16], borderColor: '#3B82F6', backgroundColor: '#3B82F633', fill: true, tension: 0.2, yAxisID: 'yTemp' },
+                    { label: 'Avg Humidity (%)', data: [60, 65, 70, 68, 65, 60, 55, 58, 62, 65, 70, 75], borderColor: '#22C55E', backgroundColor: '#22C55E33', fill: true, tension: 0.2, yAxisID: 'yHum' }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {},
+                    yTemp: { type: 'linear', position: 'left', ticks: { callback: (value) => `${value}°C` }, },
+                    yHum: { type: 'linear', position: 'right', ticks: { callback: (value) => `${value}%` }, grid: { display: false } }
+                },
+                plugins: { legend: { labels: {} } }
+            }
+        };
+
+        // --- Initialize Charts ---
+        const tempGauge = new Chart(document.getElementById('tempGauge'), createGaugeConfig('#3B82F6', 50));
+        const humidityGauge = new Chart(document.getElementById('humidityGauge'), createGaugeConfig('#22C55E', 100));
+        const liveHistoryChart = new Chart(document.getElementById('liveHistoryChart'), liveHistoryConfig);
+        const historicalChart = new Chart(document.getElementById('historicalChart'), historicalConfig);
+
+
+        // --- Static Data Simulation ---
+        function simulateData() {
+            // Function to generate pseudo-random data around a set point
+            const getRandomValue = (base, range) => (base + (Math.random() - 0.5) * range);
+
+            const temp = getRandomValue(24.5, 1.5);
+            const hum = getRandomValue(48.2, 4.0);
+
+            // Create a fake data object just for the dashboard function
+            const simulatedData = { temperature: temp, humidity: hum, status: 'normal' };
+            updateLiveDashboard(simulatedData);
+        }
+        
+        // --- ALERT CHECKER (Simplified Static Logic) ---
+        function checkLiveAlerts(temp, hum) {
+            let currentStatus = 'normal';
+            const alertReasons = [];
+
+            // Check Thresholds and collect reasons
+            if (temp > MAX_TEMP) { alertReasons.push(`Max Temperature threshold (${MAX_TEMP.toFixed(1)}°C) exceeded`); }
+            if (hum > MAX_HUMIDITY) { alertReasons.push(`Max Humidity threshold (${MAX_HUMIDITY.toFixed(1)}%) exceeded`); }
+            if (alertReasons.length > 0) { currentStatus = 'alert'; }
+            
+            const shouldAlertUIBeActive = currentStatus === 'alert' && isSystemOn && isAlertNotificationOn;
+
+            // Update UI based on alert status (static check)
+            if (shouldAlertUIBeActive) {
+                alertContainer.classList.add('alert-pulse-border');
+                deviceCardLivingRoom.classList.add('pulse-shadow-red');
+                deviceStatusText.innerText = deviceCardStatusText.innerText = 'ALERT (Static)';
+                deviceStatusDot.classList.add('pulse-red');
+            } else {
+                alertContainer.classList.remove('alert-pulse-border');
+                deviceCardLivingRoom.classList.remove('pulse-shadow-red');
+                deviceStatusText.innerText = deviceCardStatusText.innerText = 'Online';
+                deviceStatusDot.classList.remove('pulse-red');
+            }
+            
+            // Static Alert Banner (only appears once on transition)
+            if (currentStatus === 'alert' && !isAlertActive && shouldAlertUIBeActive) {
+                isAlertActive = true;
+                const reasonMsg = alertReasons.join(' and ');
+                const timestamp = new Date().toLocaleTimeString();
+                
+                alertMessageEl.innerHTML = `<strong>🚨 ALERT at ${timestamp}:</strong> ${reasonMsg}.`;
+                alertBanner.classList.remove('hidden');
+                
+            } else if (currentStatus === 'normal') {
+                isAlertActive = false;
+            }
+        }
+        
+        // --- Static Placeholder Functions ---
+
+        function updateHistoricalChart(timeRange) {
+             // Simulates data loading for the historical chart
+            console.log(`Static: Simulating historical data for: ${timeRange}`);
+            
+            // This ensures the button appears active
+            document.querySelectorAll('#chart-buttons .btn-chart').forEach(btn => {
+                btn.classList.remove('btn-chart-active');
+                if (btn.dataset.range === timeRange) {
+                    btn.classList.add('btn-chart-active');
+                }
+            });
+             historicalChart.update();
+        }
+        
+        function loadThresholdSettings() {
+             // Simulates loading thresholds from a local cache or defaults
+            console.log("Static: Loaded default thresholds.");
+            updateThresholds(MAX_TEMP, MIN_TEMP, MAX_HUMIDITY);
+        }
+
+        // --- Removed: sendControlCommand (No MQTT) ---
+        function sendControlCommand() {
+             console.log("Control Command blocked: MQTT functionality removed.");
+        }
+        
+        // --- UI THRESHOLD UPDATE FUNCTION (Static Update) ---
+        function updateThresholds(newMaxTemp, newMinTemp, newMaxHumi) {
+            MAX_TEMP = parseFloat(newMaxTemp);
+            MIN_TEMP = parseFloat(newMinTemp);
+            MAX_HUMIDITY = parseFloat(newMaxHumi);
+            
+            maxTempSlider.value = MAX_TEMP; minTempSlider.value = MIN_TEMP; maxHumiSlider.value = MAX_HUMIDITY;
+            maxTempVal.innerText = `${MAX_TEMP.toFixed(1)}°C`; minTempVal.innerText = `${MIN_TEMP.toFixed(1)}°C`; maxHumiVal.innerText = `${MAX_HUMIDITY.toFixed(1)}%`;
+
+            gaugeMaxTempEl.innerText = `${MAX_TEMP.toFixed(1)} °C`;
+            gaugeMinTempEl.innerText = `${MIN_TEMP.toFixed(1)} °C`;
+            gaugeMaxHumEl.innerText = `${MAX_HUMIDITY.toFixed(1)} %`;
+            
+            // Force a check against current simulated data
+            if (statTempEl.innerText !== '--') {
+                checkLiveAlerts(parseFloat(statTempEl.innerText), parseFloat(statHumEl.innerText));
+            }
+        }
+
+        // --- Dashboard Update Function (Updated for static data) ---
+        function updateLiveDashboard(data) {
+            const temp = data.temperature;
+            const hum = data.humidity;
+            
+            // 1. Update Gauges
+            tempGauge.data.datasets[0].data = [temp, 50 - temp]; tempLabel.innerText = `${temp.toFixed(1)}°C`; tempGauge.update('none');
+            humidityGauge.data.datasets[0].data = [hum, 100 - hum]; humLabel.innerText = `${hum.toFixed(1)}%`; humidityGauge.update('none');
+            
+            // 2. Perform Client-Side Alert Check
+            checkLiveAlerts(temp, hum);
+
+            // 3. Update device card live data
+            deviceCardTemp.innerText = `${temp.toFixed(1)} °C`; deviceCardHum.innerText = `${hum.toFixed(1)} %`;
+
+            // 4. Update Observed Quick Stats (Simulated Tracking)
+            if (temp > maxTempToday) maxTempToday = temp;
+            if (temp < minTempToday) minTempToday = temp;
+            if (hum > maxHumToday) maxHumToday = hum;
+            if (hum < minHumToday) minHumToday = hum;
+
+            statTempEl.innerText = `${temp.toFixed(1)}°C`; statHumEl.innerText = `${hum.toFixed(1)}%`;
+            maxTempEl.innerText = `${maxTempToday.toFixed(1)} °C`; minTempEl.innerText = `${minTempToday.toFixed(1)} °C`;
+            
+            // 5. Update Live History Chart
+            const now = new Date().toLocaleTimeString();
+            liveHistoryChart.data.labels.push(now);
+            liveHistoryChart.data.datasets[0].data.push(temp.toFixed(1));
+            liveHistoryChart.data.datasets[1].data.push(hum.toFixed(1));
+
+            if (liveHistoryChart.data.labels.length > MAX_LIVE_DATA_POINTS) {
+                liveHistoryChart.data.labels.shift(); liveHistoryChart.data.datasets[0].data.shift(); liveHistoryChart.data.datasets[1].data.shift();
+            }
+            liveHistoryChart.update('none');
+        }
+        
+        // --- Removed: Firebase Functions ---
+        async function saveThresholdSettings() { showToast("Static: Settings saved locally."); }
+        async function deleteSensorData() { 
+            // Static deletion simulation
+            showToast("Static: Device removal confirmed (no data deleted)."); 
+            isSystemOn = false;
+            deviceStatusText.innerText = 'REMOVED / SYSTEM OFF';
+            deviceCardStatusText.innerText = 'REMOVED / SYSTEM OFF';
+            alertContainer.classList.remove('alert-pulse-border');
+            alertBanner.classList.add('hidden');
+            confirmationModal.classList.remove('modal-active');
+            confirmationModal.classList.add('modal-inactive');
+        }
+
+        // --- Event Listeners (Modified for static mode) ---
+        function showPage(pageId) {
+            const mobileSidebar = document.getElementById('mobile-sidebar');
+            const mobileMenuOverlay = document.getElementById('mobile-menu-overlay');
+
+            pages.forEach(page => page.classList.add('hidden'));
+            document.getElementById(pageId)?.classList.remove('hidden');
+            navLinks.forEach(link => { link.classList.remove('nav-link-active'); if (link.hash === `#${pageId}`) { link.classList.add('nav-link-active'); } });
+            
+            // Hide mobile menu if visible
+            if (window.innerWidth < 1024) { mobileSidebar.classList.add('-translate-x-full'); mobileMenuOverlay.classList.add('hidden'); }
+            setTimeout(() => lucide.createIcons(), 0);
+        }
+        document.getElementById('sidebar-nav').addEventListener('click', (e) => {
+            const link = e.target.closest('a');
+            if (link?.classList.contains('nav-link')) { e.preventDefault(); showPage(`page-${link.hash.substring(1)}`); }
+        });
+        
+        // Mobile Menu Toggles
+        mobileMenuButtons.forEach(btn => { btn.addEventListener('click', () => { 
+            mobileSidebar.classList.remove('-translate-x-full'); 
+            mobileMenuOverlay.classList.remove('hidden', 'opacity-0'); 
+            mobileMenuOverlay.classList.add('opacity-100'); 
+        }); });
+        
+        mobileMenuOverlay.addEventListener('click', () => { 
+            mobileSidebar.classList.add('-translate-x-full'); 
+            mobileMenuOverlay.classList.remove('opacity-100');
+            mobileMenuOverlay.classList.add('opacity-0');
+            setTimeout(() => mobileMenuOverlay.classList.add('hidden'), 300);
+        });
+        
+        closeMenuBtn.addEventListener('click', mobileMenuOverlay.click);
+
+
+        deviceCardMuteBtn.addEventListener('click', () => { showToast("Mute command is static."); });
+        alertDismissBtn.addEventListener('click', () => { alertBanner.classList.add('hidden'); });
+
+        // Remove Device Workflow
+        removeDeviceBtn.addEventListener('click', () => { 
+            confirmationModal.classList.remove('modal-inactive'); 
+            confirmationModal.classList.add('modal-active'); 
+        });
+        cancelRemoveBtn.addEventListener('click', () => { 
+            confirmationModal.classList.remove('modal-active'); 
+            confirmationModal.classList.add('modal-inactive'); 
+        });
+        confirmRemoveBtn.addEventListener('click', deleteSensorData);
+
+
+        // Other interactive buttons
+        addDeviceBtn.addEventListener('click', () => showToast("Feature coming soon!"));
+        
+
+
+        // Chart buttons
+        if (chartButtonContainer) { chartButtonContainer.addEventListener('click', (e) => { 
+            if (e.target.classList.contains('btn-chart')) { 
+                document.querySelectorAll('#chart-buttons .btn-chart').forEach(btn => { btn.classList.remove('btn-chart-active'); });
+                e.target.classList.add('btn-chart-active');
+                updateHistoricalChart(e.target.dataset.range); 
+            } 
+        }); }
+
+        // Settings Sliders (Update local state only)
+        maxTempSlider?.addEventListener('input', (e) => { updateThresholds(parseFloat(e.target.value), MIN_TEMP, MAX_HUMIDITY); });
+        minTempSlider?.addEventListener('input', (e) => { updateThresholds(MAX_TEMP, parseFloat(e.target.value), MAX_HUMIDITY); });
+        maxHumiSlider?.addEventListener('input', (e) => { updateThresholds(MAX_TEMP, MIN_TEMP, parseFloat(e.target.value)); });
+
+        // Save button (Static)
+        saveSettingsBtn?.addEventListener('click', saveThresholdSettings);
+        
+        // Alert Master Control Logic (Static)
+        togglePushEl?.addEventListener('change', (e) => { 
+            if (!e.target.checked) { 
+                e.preventDefault(); 
+                e.target.checked = true; 
+                alertConfirmModal.classList.remove('modal-inactive'); 
+                alertConfirmModal.classList.add('modal-active'); 
+            } else { 
+                isAlertNotificationOn = true; 
+                showToast("Alert notifications activated! (Static)"); 
+            } 
+        });
+        confirmAlertDisableBtn?.addEventListener('click', () => { 
+            isAlertNotificationOn = false; 
+            togglePushEl.checked = false; 
+            alertBanner.classList.add('hidden'); 
+            alertContainer.classList.remove('alert-pulse-border'); 
+            alertConfirmModal.classList.remove('modal-active'); 
+            alertConfirmModal.classList.add('modal-inactive'); 
+            showToast("Alert notifications successfully disabled. (Static)"); 
+        });
+        cancelAlertDisableBtn?.addEventListener('click', () => { 
+            togglePushEl.checked = true; 
+            alertConfirmModal.classList.remove('modal-active'); 
+            alertConfirmModal.classList.add('modal-inactive'); 
+            showToast("Alert notifications remain active. (Static)"); 
+        });
+
+        // System Power Logic (Static)
+        toggleSystemEl?.addEventListener('change', (e) => { 
+            isSystemOn = e.target.checked; 
+            
+            systemPowerStatusTextEl.innerText = isSystemOn ? 'ON' : 'OFF';
+            systemPowerStatusTextEl.classList.toggle('text-green-600', isSystemOn);
+            systemPowerStatusTextEl.classList.toggle('text-red-600', !isSystemOn);
+            systemPowerStatusDotEl.classList.toggle('bg-green-500', isSystemOn);
+            systemPowerStatusDotEl.classList.toggle('bg-red-500', !isSystemOn);
+            
+            if (isSystemOn) {
+                deviceStatusText.innerText = deviceCardStatusText.innerText = 'Online';
+                deviceStatusDot.classList.remove('bg-slate-400');
+                deviceStatusDot.classList.add('bg-green-500');
+            } else {
+                deviceStatusText.innerText = deviceCardStatusText.innerText = 'SYSTEM OFF';
+                deviceStatusDot.classList.remove('bg-green-500');
+                deviceStatusDot.classList.add('bg-slate-400');
+                alertContainer.classList.remove('alert-pulse-border');
+                alertBanner.classList.add('hidden');
+            }
+            
+            showToast(`System toggle is static. State: ${isSystemOn ? 'ON' : 'OFF'}`); 
+        });
+
+        
+        // --- Start the App ---
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadThresholdSettings();
+            updateHistoricalChart('year'); 
+            showPage('page-dashboard');
+            updateChartTheme();
+            document.querySelector('.btn-chart[data-range="year"]').classList.add('btn-chart-active');
+
+
+            // Start static data loop
+            setInterval(simulateData, 2000);
+        });
+    </script>
+</body>
+</html>
