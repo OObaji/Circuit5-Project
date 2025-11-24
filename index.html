@@ -482,7 +482,7 @@
         // --- MQTT CONFIGURATION ---
         const MQTT_BROKER     = "broker.hivemq.com";
         const MQTT_PORT       = 8000;  // WebSocket port for HiveMQ public broker
-        const MQTT_TOPIC      = "hope/iot_project/student123"; // same as Arduino publish topic
+        const MQTT_TOPIC      = "hope/iot/circuit5/living-room/uno-r4/telemetry"; // same as Arduino publish topic
         const MQTT_CLIENT_ID  = "webdash_" + Math.random().toString(16).slice(2, 8);
 
         let mqttClient = null;          // Paho client instance
@@ -500,6 +500,58 @@
         
         const MAX_LIVE_DATA_POINTS = 30;
         // --- End Configuration ---
+
+        // --- TELEMETRY VALIDATION HELPER ---
+        // Accepts raw payloadString, returns { temperature, humidity, status } or null
+    function parseAndValidateTelemetry(payloadString) {
+        let data;
+        try {
+            data = JSON.parse(payloadString);
+        } catch (err) {
+            console.warn("MQTT payload is not valid JSON, ignoring:", payloadString);
+            return null;
+        }
+
+        if (typeof data !== "object" || data === null) {
+            console.warn("MQTT payload is not an object, ignoring:", data);
+            return null;
+        }
+
+        // Extract and coerce
+        const tempRaw = data.temperature;
+        const humRaw  = data.humidity;
+        const statusRaw = typeof data.status === "string" ? data.status : "unknown";
+
+        const temperature = Number(tempRaw);
+        const humidity    = Number(humRaw);
+
+        if (Number.isNaN(temperature) || Number.isNaN(humidity)) {
+            console.warn("MQTT payload missing numeric temperature/humidity, ignoring:", data);
+            return null;
+        }
+
+        // Basic physical sanity checks (DHT + indoor environment)
+        if (temperature < -40 || temperature > 80) {
+            console.warn("Temperature out of expected range, ignoring:", temperature);
+            return null;
+        }
+        if (humidity < 0 || humidity > 100) {
+            console.warn("Humidity out of expected range, ignoring:", humidity);
+            return null;
+        }
+
+        // Normalise status to a small known set
+        let status = "normal";
+        const statusLower = statusRaw.toLowerCase();
+
+        if (statusLower === "alert" || statusLower === "error") {
+            status = statusLower;
+        } else if (statusLower !== "normal") {
+            status = "unknown";
+        }
+
+        return { temperature, humidity, status };
+    }
 
         // Get all our HTML elements
         const connStatusDot = document.getElementById('conn-status');
@@ -627,14 +679,15 @@
 
             // Called every time a message arrives on a subscribed topic
             mqttClient.onMessageArrived = (message) => {
-                try {
-                    const payload = message.payloadString;
-                    const data = JSON.parse(payload);
-                    // Expecting: { temperature, humidity, status }
-                    updateLiveDashboard(data);
-                } catch (err) {
-                    console.error("Failed to parse MQTT payload:", err, message.payloadString);
+                const payload = message.payloadString;
+                const telemetry = parseAndValidateTelemetry(payload);
+                if (!telemetry) {
+                    // Invalid / malicious / nonsense payload – ignore silently
+                return;
                 }
+
+                // telemetry is guaranteed: { temperature: Number, humidity: Number, status: "normal"|"alert"|"error"|"unknown" }
+                updateLiveDashboard(telemetry);
             };
 
             // Now connect to the broker
@@ -835,17 +888,24 @@
         function updateLiveDashboard(data) {
             const temp = data.temperature;
             const hum = data.humidity;
-            
+            const status = data.status || "normal"; // from Arduino or "unknown"
+
             // 1. Update Gauges
-            tempGauge.data.datasets[0].data = [temp, 50 - temp]; tempLabel.innerText = `${temp.toFixed(1)}°C`; tempGauge.update('none');
-            humidityGauge.data.datasets[0].data = [hum, 100 - hum]; humLabel.innerText = `${hum.toFixed(1)}%`; humidityGauge.update('none');
-            
-            // 2. Perform Client-Side Alert Check
+            tempGauge.data.datasets[0].data = [temp, 50 - temp];
+            tempLabel.innerText = `${temp.toFixed(1)}°C`;
+            tempGauge.update('none');
+
+            humidityGauge.data.datasets[0].data = [hum, 100 - hum];
+            humLabel.innerText = `${hum.toFixed(1)}%`;
+            humidityGauge.update('none');
+
+            // 2. Perform Client-Side Alert Check (still uses thresholds)
             checkLiveAlerts(temp, hum);
 
             // 3. Update device card live data
-            deviceCardTemp.innerText = `${temp.toFixed(1)} °C`; deviceCardHum.innerText = `${hum.toFixed(1)} %`;
-
+            deviceCardTemp.innerText = `${temp.toFixed(1)} °C`;
+            deviceCardHum.innerText  = `${hum.toFixed(1)} %`;
+            
             // 4. Update Observed Quick Stats (Simulated Tracking)
             if (temp > maxTempToday) maxTempToday = temp;
             if (temp < minTempToday) minTempToday = temp;
