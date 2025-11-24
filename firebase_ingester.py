@@ -22,7 +22,7 @@ import firebase_admin           # pip install firebase-admin
 from firebase_admin import credentials, db
 
 SERVICE_ACCOUNT_PATH = r"c:/Users/Alex/OneDrive/Desktop/Year 3/1 - Internet of Things/serviceAccountKey.json"
-DATABASE_URL = "https://iotsystem-circuit5-default-rtdb.firebaseio.com"   
+DATABASE_URL = "https://iotsystem-circuit5-default-rtdb.europe-west1.firebasedatabase.app"
 
 
 def init_firebase():
