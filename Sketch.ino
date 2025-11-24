@@ -41,13 +41,13 @@ LiquidCrystal_I2C lcd(0x27, 20, 4); // Use 0x3F if 0x27 is blank
 // !!!
 // !!! ENTER YOUR WI-FI NAME AND PASSWORD HERE !!!
 // !!!
-const char* ssid = "iPhone";
-const char* password = "*Konami2003*";
+const char* ssid = "Elanet-228002B7";
+const char* password = "tyycc9296j";
 
 // --- 4b. MQTT CONFIGURATION ---
 const char mqttBroker[]   = "broker.hivemq.com";
 int        mqttPort       = 1883;                      // same as Python PORT
-const char mqttTopic[]    = "hope/iot_project/student123"; // same as TOPIC_TELEMETRY
+const char mqttTopic[]    = "hope/iot/circuit5/living-room/uno-r4/telemetry"; // updated topic structure for better security & scalability
 const char mqttClientId[] = "";     // any unique ID
 
 // Create WiFi + MQTT client objects
