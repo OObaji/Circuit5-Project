@@ -17,6 +17,29 @@
     <!-- 4. Load Paho MQTT over WebSockets (for real-time data) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 
+    <!-- 5. Firebase JS SDK (Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+    <script>
+        // Your Firebase configuration (from console)
+        const firebaseConfig = {
+        apiKey: "AIzaSyBPa9tIrRZAlkrdO-VJXCBBxElv0NXmb_w",
+        authDomain: "iotsystem-circuit5.firebaseapp.com",
+        databaseURL: "https://iotsystem-circuit5-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "iotsystem-circuit5",
+        storageBucket: "iotsystem-circuit5.firebasestorage.app",
+        messagingSenderId: "113506397936",
+        appId: "1:113506397936:web:a548832526e13b01bcdc35"
+        };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+
+    // Get Realtime Database reference
+    const db = firebase.database();
+    </script>
+
     <style>
         /* (CSS styles remain the same for aesthetics and responsiveness) */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
@@ -249,7 +272,7 @@
 
                         <!-- Live History Chart (Full width) -->
                         <div class="card rounded-lg shadow-md p-6 md:col-span-full lg:col-span-3">
-                            <h2 class="text-lg font-semibold text-slate-500 mb-4">Live Sensor History (Simulated)</h2>
+                            <h2 class="text-lg font-semibold text-slate-500 mb-4">Live Sensor History</h2>
                             <canvas id="liveHistoryChart"></canvas>
                         </div>
 
@@ -377,7 +400,7 @@
                     <div class="p-4 sm:p-6">
                         <div class="card rounded-lg shadow-md p-6">
                             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-                                <h2 class="text-lg font-semibold text-slate-500 mb-3 sm:mb-0">Historical Data (Simulated)</h2>
+                                <h2 class="text-lg font-semibold text-slate-500 mb-3 sm:mb-0">Historical Data</h2>
                                 <div id="chart-buttons" class="flex space-x-1 bg-slate-200 p-1 rounded-lg w-full sm:w-auto justify-stretch">
                                     <button class="btn-chart flex-1 px-3 py-1 text-sm font-medium rounded-md" data-range="hour">Hour</button>
                                     <button class="btn-chart flex-1 px-3 py-1 text-sm font-medium rounded-md" data-range="day">Day</button>
@@ -499,6 +522,22 @@
         let isAlertNotificationOn = true; 
         
         const MAX_LIVE_DATA_POINTS = 30;
+
+        // --- HISTORY CONFIG (Firebase-backed) ---
+        // How many readings to pull for each button range
+        const HISTORY_LIMITS = {
+            hour: 60,    // last ~60 readings
+            day: 240,    // last ~240 readings
+            month: 720,  // last ~720 readings
+            year: 1440   // last ~1440 readings
+        };
+
+        // Turn this to false if you only want a one-off fetch instead of realtime
+        const ENABLE_HISTORY_REALTIME = true;
+
+        // Will hold the current Firebase query used for realtime updates
+        let historyListenerRef = null;
+
         // --- End Configuration ---
 
         // --- TELEMETRY VALIDATION HELPER ---
@@ -551,6 +590,103 @@
         }
 
         return { temperature, humidity, status };
+    }
+
+    // --- FIREBASE HISTORY FETCHING HELPERS ---
+    async function fetchHistoryFromFirebase(limit = 50) {
+        try {
+        // Read last N readings for this device
+        const snapshot = await db
+            .ref("readings/uno-r4")
+            .limitToLast(limit)
+            .once("value");
+
+        const data = snapshot.val();
+        if (!data) {
+            console.warn("No historical data in Firebase yet.");
+            return [];
+          }
+
+          // Convert object { key: {timestamp, temperature,...} } -> sorted array
+          const records = Object.entries(data).map(([key, value]) => ({
+            key,
+            timestamp: value.timestamp,
+            temperature: value.temperature,
+            humidity: value.humidity,
+            status: value.status,
+          }));
+
+        // Sort by timestamp ascending
+        records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        return records;
+        } catch (err) {
+        console.error("Failed to fetch history from Firebase:", err);
+        return [];
+            }
+        }
+
+    // Helper: convert records into datasets for Chart.js
+    function updateHistoricalChartFromRecords(records) {
+        if (!records || records.length === 0) {
+          return;
+        }
+
+        // X-axis labels: time (HH:MM) or short timestamp
+        const labels = records.map(rec => {
+          const d = new Date(rec.timestamp);
+          return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        });
+
+        const temps = records.map(rec => rec.temperature);
+        const hums  = records.map(rec => rec.humidity);
+
+        historicalChart.data.labels = labels;
+        historicalChart.data.datasets[0].data = temps; // temperature series
+        historicalChart.data.datasets[1].data = hums;  // humidity series
+        historicalChart.update();
+    }
+
+    // OPTIONAL: Realtime listener using "on('value')" so the history chart
+    // updates automatically whenever new readings arrive.
+    function attachHistoryRealtimeListener(limit) {
+        if (!ENABLE_HISTORY_REALTIME) return;
+
+        // Detach previous listener if any
+        if (historyListenerRef) {
+            historyListenerRef.off('value');
+            historyListenerRef = null;
+        }
+
+        // Build a new limited query
+        historyListenerRef = db
+            .ref("readings/uno-r4")
+            .limitToLast(limit);
+
+        historyListenerRef.on("value", (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+                console.warn("Realtime history: no data in Firebase.");
+                historicalChart.data.labels = [];
+                historicalChart.data.datasets[0].data = [];
+                historicalChart.data.datasets[1].data = [];
+                historicalChart.update();
+                return;
+            }
+
+            const records = Object.entries(data).map(([key, value]) => ({
+                key,
+                timestamp: value.timestamp,
+                temperature: value.temperature,
+                humidity: value.humidity,
+                status: value.status,
+            }));
+
+            // Sort ascending by timestamp
+            records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            updateHistoricalChartFromRecords(records);
+        });
     }
 
         // Get all our HTML elements
@@ -837,22 +973,40 @@
                 isAlertActive = false;
             }
         }
-        
-        // --- Static Placeholder Functions ---
+    
 
-        function updateHistoricalChart(timeRange) {
-             // Simulates data loading for the historical chart
-            console.log(`Static: Simulating historical data for: ${timeRange}`);
-            
-            // This ensures the button appears active
+        // --- Historical Chart Update (Firebase-backed) ---
+        async function updateHistoricalChart(timeRange) {
+            const range = timeRange || 'year';
+            const limit = HISTORY_LIMITS[range] || 200;
+
+            console.log(`Loading historical data from Firebase for range "${range}" (limit=${limit})`);
+
+            // 1) Visually activate the selected button
             document.querySelectorAll('#chart-buttons .btn-chart').forEach(btn => {
                 btn.classList.remove('btn-chart-active');
-                if (btn.dataset.range === timeRange) {
+                if (btn.dataset.range === range) {
                     btn.classList.add('btn-chart-active');
                 }
             });
-             historicalChart.update();
+
+            // 2) One-off fetch of the last N records
+            const records = await fetchHistoryFromFirebase(limit);
+
+            if (!records || records.length === 0) {
+                console.warn("No historical records returned for range:", range);
+                historicalChart.data.labels = [];
+                historicalChart.data.datasets[0].data = [];
+                historicalChart.data.datasets[1].data = [];
+                historicalChart.update();
+            } else {
+                updateHistoricalChartFromRecords(records);
+            }
+
+            // 3) Attach realtime listener (optional)
+            attachHistoryRealtimeListener(limit);
         }
+
         
         function loadThresholdSettings() {
              // Simulates loading thresholds from a local cache or defaults
