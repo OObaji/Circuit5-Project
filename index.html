@@ -522,6 +522,9 @@
         let isAlertNotificationOn = true; 
         
         const MAX_LIVE_DATA_POINTS = 30;
+        // Tracks which history range is currently active ("hour", "day", "month", "year")
+        let currentHistoryRange = 'year';
+
 
         // --- HISTORY CONFIG (Firebase-backed) ---
         // How many readings to pull for each button range
@@ -626,16 +629,52 @@
             }
         }
 
-    // Helper: convert records into datasets for Chart.js
-    function updateHistoricalChartFromRecords(records) {
+        function updateHistoricalChartFromRecords(records) {
         if (!records || records.length === 0) {
-          return;
+            return;
         }
 
-        // X-axis labels: time (HH:MM) or short timestamp
         const labels = records.map(rec => {
-          const d = new Date(rec.timestamp);
-          return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            const d = new Date(rec.timestamp);
+
+            switch (currentHistoryRange) {
+                case 'hour':
+                    // Last 60 minutes – show time of day
+                    return d.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit"
+                    });
+
+                case 'day':
+                    // Last 24 hours – still show time of day
+                    return d.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit"
+                    });
+
+                case 'month':
+                    // Last 30 days – show date (e.g. "24 Nov")
+                    return d.toLocaleDateString([], {
+                        day: "2-digit",
+                        month: "short"
+                    });
+
+                case 'year':
+                    // Last 365 days – also show date
+                    return d.toLocaleDateString([], {
+                        day: "2-digit",
+                        month: "short"
+                    });
+
+                default:
+                    // Fallback: date + time
+                    return d.toLocaleString([], {
+                        day: "2-digit",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit"
+                    });
+            }
         });
 
         const temps = records.map(rec => rec.temperature);
@@ -647,10 +686,13 @@
         historicalChart.update();
     }
 
+
     // OPTIONAL: Realtime listener using "on('value')" so the history chart
     // updates automatically whenever new readings arrive.
-    function attachHistoryRealtimeListener(limit) {
+    function attachHistoryRealtimeListener(limit, range) {
         if (!ENABLE_HISTORY_REALTIME) return;
+
+        const effectiveRange = range || 'year';
 
         // Detach previous listener if any
         if (historyListenerRef) {
@@ -685,9 +727,30 @@
             // Sort ascending by timestamp
             records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-            updateHistoricalChartFromRecords(records);
+            // Apply the same time-window filtering as the one-off fetch
+            const filtered = filterRecordsByTimeWindow(records, effectiveRange);
+            updateHistoricalChartFromRecords(filtered);
         });
     }
+
+    function filterRecordsByTimeWindow(records, range) {
+        const now = Date.now();
+
+        const WINDOW_MS = {
+            hour: 60 * 60 * 1000,
+            day: 24 * 60 * 60 * 1000,
+            month: 30 * 24 * 60 * 60 * 1000,
+            year: 365 * 24 * 60 * 60 * 1000
+        };
+
+        const windowSize = WINDOW_MS[range] || WINDOW_MS.year;
+
+        return records.filter(r => {
+            const ts = new Date(r.timestamp).getTime();
+            return now - ts <= windowSize;
+        });
+    }
+
 
         // Get all our HTML elements
         const connStatusDot = document.getElementById('conn-status');
@@ -976,8 +1039,10 @@
     
 
         // --- Historical Chart Update (Firebase-backed) ---
+                // --- Historical Chart Update (Firebase-backed) ---
         async function updateHistoricalChart(timeRange) {
             const range = timeRange || 'year';
+            currentHistoryRange = range;
             const limit = HISTORY_LIMITS[range] || 200;
 
             console.log(`Loading historical data from Firebase for range "${range}" (limit=${limit})`);
@@ -995,17 +1060,31 @@
 
             if (!records || records.length === 0) {
                 console.warn("No historical records returned for range:", range);
+
+                // Clear chart
                 historicalChart.data.labels = [];
                 historicalChart.data.datasets[0].data = [];
                 historicalChart.data.datasets[1].data = [];
                 historicalChart.update();
-            } else {
-                updateHistoricalChartFromRecords(records);
+
+                // Detach any existing realtime listener (no data to listen to)
+                if (historyListenerRef) {
+                    historyListenerRef.off('value');
+                    historyListenerRef = null;
+                }
+                return;
             }
 
-            // 3) Attach realtime listener (optional)
-            attachHistoryRealtimeListener(limit);
+            // 3) Apply time-window filtering (true Hour/Day/Month/Year behaviour)
+            const filtered = filterRecordsByTimeWindow(records, range);
+            updateHistoricalChartFromRecords(filtered);
+
+            // 4) Attach realtime listener so new points respect the same range
+            attachHistoryRealtimeListener(limit, range);
         }
+
+
+        
 
         
         function loadThresholdSettings() {
@@ -1150,14 +1229,16 @@
         
 
 
-        // Chart buttons
-        if (chartButtonContainer) { chartButtonContainer.addEventListener('click', (e) => { 
-            if (e.target.classList.contains('btn-chart')) { 
-                document.querySelectorAll('#chart-buttons .btn-chart').forEach(btn => { btn.classList.remove('btn-chart-active'); });
-                e.target.classList.add('btn-chart-active');
-                updateHistoricalChart(e.target.dataset.range); 
-            } 
-        }); }
+            // Chart buttons
+        if (chartButtonContainer) {
+            chartButtonContainer.addEventListener('click', (e) => {
+                if (e.target.classList.contains('btn-chart')) {
+                    // Let updateHistoricalChart handle the active-state
+                    updateHistoricalChart(e.target.dataset.range);
+                }
+            });
+        }
+
 
         // Settings Sliders (Update local state only)
         maxTempSlider?.addEventListener('input', (e) => { updateThresholds(parseFloat(e.target.value), MIN_TEMP, MAX_HUMIDITY); });
