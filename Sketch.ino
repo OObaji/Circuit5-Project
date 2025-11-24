@@ -220,7 +220,8 @@ void connectToMqtt() {
 void publishSensorData(float temperature, float humidity, const String &status) {
   // Build a JSON-like payload manually
   String payload = "{";
-  payload += "\"temperature\":";
+  payload += "\"deviceId\":\"uno-r4\"";
+  payload += ",\"temperature\":";
   payload += String(temperature, 1);
   payload += ",\"humidity\":";
   payload += String(humidity, 1);
