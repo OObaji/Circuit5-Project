@@ -120,8 +120,8 @@ void loop() {
   mqttClient.poll();  // Process incoming/outgoing MQTT packets
 
 
-  // --- SENSOR READING (Every 10 seconds) ---
-  if (millis() - lastSensorReadMillis >= 10000) {
+  // --- SENSOR READING (Every 3 seconds) ---
+  if (millis() - lastSensorReadMillis >= 3000) {
     lastSensorReadMillis = millis(); // Reset the timer
 
     float humidity = dht.readHumidity();
