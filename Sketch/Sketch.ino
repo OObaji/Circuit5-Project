@@ -1,7 +1,7 @@
 /*
   ======================================================================
   === Local Smart Home Temperature & Humidity Monitoring System      ===
-  === with Wi-Fi Provisioning Portal                                 ===
+  === with Wi-Fi Provisioning Portal + Modular MQTT Telemetry        ===
   ===                                                                ===
   === BOARD:    Arduino UNO R4 WiFi                                  ===
   === SENSORS:  DHT11 (on D2)                                        ===
@@ -15,13 +15,13 @@
 
 // ---------- 1. LIBRARIES ----------
 #include <WiFiS3.h>
-#include <ArduinoMqttClient.h>
 #include <DHT.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 
-#include "WiFiProvisioning.h"   // custom Wi-Fi provisioning module
+#include "WiFiProvisioning.h"
+#include "MqttTelemetry.h"
 
 // ---------- 2. HARDWARE PINS & OBJECTS ----------
 
@@ -42,17 +42,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 #define MAX_TEMP      26.0
 #define MAX_HUMIDITY  60.0
 
-// ---------- 4. MQTT CONFIG ----------
-const char mqttBroker[]   = "broker.hivemq.com";
-int        mqttPort       = 1883;
-const char mqttTopic[]    = "hope/iot/circuit5/living-room/uno-r4/telemetry";
-const char mqttClientId[] = "uno-r4-living-room";
-
-// WiFi + MQTT objects
-WiFiClient  wifiClient;
-MqttClient  mqttClient(wifiClient);
-
-// ---------- 5. STATE ----------
+// ---------- 4. STATE ----------
 unsigned long lastSensorReadMillis = 0;
 unsigned long lastBlinkMillis      = 0;
 bool          redLedState          = LOW;
@@ -61,12 +51,8 @@ String        alertStatus          = "normal";
 // Wi-Fi credentials (managed by WiFiProvisioning module)
 WifiCredentials gWifiCreds;
 
-// Forward declarations
-void connectToMqtt();
-void publishSensorData(float temperature, float humidity, const String &status);
-
 // =====================================================================
-//                        6. SETUP & LOOP
+//                        5. SETUP & LOOP
 // =====================================================================
 
 void setup() {
@@ -93,9 +79,8 @@ void setup() {
     lcd.print("AP: UNO-R4-SETUP");
     lcd.setCursor(0, 1);
     lcd.print("Config via WiFi");
-    runProvisioningPortal(gWifiCreds);  // blocks; returns only when /save happens
-    // After saving, we ask the user to reset:
-    while (true) { delay(1000); }
+    runProvisioningPortal(gWifiCreds);  // blocks inside AP/HTTP loop
+    while (true) { delay(1000); }       // wait for user reset
   }
 
   if (!connectWithStoredCredentials(gWifiCreds, 20000)) {
@@ -112,9 +97,8 @@ void setup() {
   lcd.print("WiFi Connected!");
   Serial.println("WiFi Connected!");
 
-  // --- MQTT setup ---
-  mqttClient.setId(mqttClientId);
-  connectToMqtt();
+  // --- MQTT setup (now handled by module) ---
+  mqttSetup();
 
   lcd.clear();
   lcd.print("System Ready");
@@ -123,18 +107,19 @@ void setup() {
 }
 
 void loop() {
-  // Keep Wi-Fi & MQTT alive
+  // --- Keep Wi-Fi & MQTT alive ---
+
+  // If Wi-Fi drops, try reconnecting using stored credentials
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi dropped, reconnecting...");
     connectWithStoredCredentials(gWifiCreds, 20000);
   }
 
-  if (!mqttClient.connected()) {
-    connectToMqtt();
-  }
-  mqttClient.poll();
+  // Let MQTT module handle its own connection/polling logic
+  mqttLoop();
 
-  // Sensor logic every 10 seconds
+  // --- Sensor logic every 10 seconds ---
+
   if (millis() - lastSensorReadMillis >= 10000) {
     lastSensorReadMillis = millis();
 
@@ -173,12 +158,13 @@ void loop() {
         lcd.print("OK");
       }
 
-      // Publish telemetry JSON
-      publishSensorData(temperature, humidity, alertStatus);
+      // Publish telemetry via MQTT module
+      mqttPublishTelemetry(temperature, humidity, alertStatus);
     }
   }
 
-  // Blink red LED if alert; green steady if normal
+  // --- LED alert behaviour ---
+
   if (alertStatus == "alert") {
     if (millis() - lastBlinkMillis >= 500) {
       lastBlinkMillis = millis();
@@ -190,44 +176,4 @@ void loop() {
     digitalWrite(RED_LED_PIN, LOW);
     digitalWrite(GREEN_LED_PIN, HIGH);
   }
-}
-
-// =====================================================================
-//                        7. MQTT HELPERS
-// =====================================================================
-
-void connectToMqtt() {
-  Serial.print("Connecting to MQTT broker ");
-  Serial.print(mqttBroker);
-  Serial.print(":");
-  Serial.println(mqttPort);
-
-  while (!mqttClient.connect(mqttBroker, mqttPort)) {
-    Serial.print("MQTT connect failed, rc = ");
-    Serial.println(mqttClient.connectError());
-    delay(2000);
-  }
-
-  Serial.println("MQTT connected.");
-}
-
-void publishSensorData(float temperature, float humidity, const String &status) {
-  String payload = "{";
-  payload += "\"deviceId\":\"uno-r4\",";
-  payload += "\"temperature\":";
-  payload += String(temperature, 1);
-  payload += ",\"humidity\":";
-  payload += String(humidity, 1);
-  payload += ",\"status\":\"";
-  payload += status;
-  payload += "\"}";
-
-  Serial.print("Publishing -> ");
-  Serial.print(mqttTopic);
-  Serial.print(" : ");
-  Serial.println(payload);
-
-  mqttClient.beginMessage(mqttTopic);
-  mqttClient.print(payload);
-  mqttClient.endMessage();
 }
