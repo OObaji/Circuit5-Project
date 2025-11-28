@@ -504,9 +504,10 @@
         
         // --- MQTT CONFIGURATION ---
         const MQTT_BROKER     = "broker.hivemq.com";
-        const MQTT_PORT       = 8000;  // WebSocket port for HiveMQ public broker
+        const MQTT_PORT       = 8884;  // secure WebSocket port for HiveMQ public broker
         const MQTT_TOPIC      = "hope/iot/circuit5/living-room/uno-r4/telemetry"; // same as Arduino publish topic
         const MQTT_CLIENT_ID  = "webdash_" + Math.random().toString(16).slice(2, 8);
+        const MQTT_URL        = "wss://broker.hivemq.com:8884/mqtt";
 
         let mqttClient = null;          // Paho client instance
         let simulateIntervalId = null;  // optional fallback simulator timer
@@ -940,78 +941,124 @@
         }
 
 
-                // --- MQTT INITIALISATION & CALLBACKS (NEW) ---
+                // --- MQTT INITIALISATION & CALLBACKS ---
+                // --- MQTT INITIALISATION & CALLBACKS ---
+
+        // Helper: start fallback simulation if real MQTT is unavailable
+        function startSimulationIfNeeded() {
+            if (!simulateIntervalId) {
+                console.log("Starting fallback simulated data feed…");
+                simulateIntervalId = setInterval(simulateData, 2000);
+            }
+        }
+
         function initMqtt() {
-            // Update UI to show we're trying to connect
-            connStatusText.innerText = "Connecting to MQTT...";
-            connStatusDot.classList.remove("bg-slate-400", "bg-red-500");
+            console.log(`Connecting to MQTT over WSS ${MQTT_BROKER}:${MQTT_PORT}/mqtt as ${MQTT_CLIENT_ID}`);
+
+            // Make sure we don't keep a stale client around
+            if (mqttClient) {
+                try {
+                    mqttClient.disconnect();
+                } catch (e) {
+                    console.warn("Previous MQTT client disconnect failed:", e);
+                }
+                mqttClient = null;
+            }
+
+            // UI: show "connecting"
+            connStatusText.innerText = "MQTT Connecting…";
+            connStatusDot.classList.remove("bg-slate-400", "bg-green-500", "bg-red-500");
             connStatusDot.classList.add("bg-yellow-400");
 
-            // Create MQTT client instance (WebSocket)
+            // Create the client: host, port, websocket path, clientId
             mqttClient = new Paho.MQTT.Client(
                 MQTT_BROKER,
                 Number(MQTT_PORT),
+                "/mqtt",
                 MQTT_CLIENT_ID
             );
 
-            // Called when the connection drops
-            mqttClient.onConnectionLost = (responseObject) => {
-                console.warn("MQTT connection lost:", responseObject.errorMessage);
-                connStatusText.innerText = "MQTT Disconnected";
-                connStatusDot.classList.remove("bg-green-500", "bg-yellow-400");
-                connStatusDot.classList.add("bg-red-500");
+            // Attach handlers – now mqttClient is definitely not null
+            mqttClient.onConnectionLost   = handleMqttConnectionLost;
+            mqttClient.onMessageArrived   = handleMqttMessageArrived;
 
-                // OPTIONAL: fall back to simulated data if broker goes down
-                if (!simulateIntervalId) {
-                    simulateIntervalId = setInterval(simulateData, 2000);
-                }
-            };
-
-            // Called every time a message arrives on a subscribed topic
-            mqttClient.onMessageArrived = (message) => {
-                const payload = message.payloadString;
-                const telemetry = parseAndValidateTelemetry(payload);
-                if (!telemetry) {
-                    // Invalid / malicious / nonsense payload – ignore silently
-                return;
-                }
-
-                // telemetry is guaranteed: { temperature: Number, humidity: Number, status: "normal"|"alert"|"error"|"unknown" }
-                updateLiveDashboard(telemetry);
-            };
-
-            // Now connect to the broker
+            // Connect over secure WebSockets (wss://)
             mqttClient.connect({
-                useSSL: false, // set true if you later move to wss/secure endpoint
-                onSuccess: () => {
-                    console.log("MQTT connected");
-                    connStatusText.innerText = "MQTT Connected";
-                    connStatusDot.classList.remove("bg-slate-400", "bg-yellow-400", "bg-red-500");
-                    connStatusDot.classList.add("bg-green-500");
-
-                    // Stop any simulation if it is running
-                    if (simulateIntervalId) {
-                        clearInterval(simulateIntervalId);
-                        simulateIntervalId = null;
-                    }
-
-                    // Subscribe to the telemetry topic
-                    mqttClient.subscribe(MQTT_TOPIC);
-                    console.log("Subscribed to:", MQTT_TOPIC);
-                },
-                onFailure: (err) => {
-                    console.error("MQTT connect failed:", err.errorMessage);
-                    connStatusText.innerText = "MQTT Error";
-                    connStatusDot.classList.remove("bg-yellow-400", "bg-green-500");
-                    connStatusDot.classList.add("bg-red-500");
-
-                    // OPTIONAL: if we can't connect, fall back to simulated data
-                    if (!simulateIntervalId) {
-                        simulateIntervalId = setInterval(simulateData, 2000);
-                    }
-                }
+                useSSL: true,          // required for wss://broker.hivemq.com:8884
+                timeout: 5,
+                onSuccess: handleMqttConnectSuccess,
+                onFailure: handleMqttConnectFailure
             });
         }
+
+        function handleMqttConnectSuccess() {
+            console.log("MQTT connected");
+            connStatusText.innerText = "MQTT Connected";
+            connStatusDot.classList.remove("bg-slate-400", "bg-yellow-400", "bg-red-500");
+            connStatusDot.classList.add("bg-green-500");
+
+            // Stop any simulation if it was running
+            if (simulateIntervalId) {
+                clearInterval(simulateIntervalId);
+                simulateIntervalId = null;
+            }
+
+            if (mqttClient) {
+                mqttClient.subscribe(MQTT_TOPIC);
+                console.log("Subscribed to:", MQTT_TOPIC);
+            } else {
+                console.warn("MQTT connected but client is null – this should not happen.");
+            }
+        }
+
+        function handleMqttConnectFailure(err) {
+            console.error("MQTT connect failed:",
+                err && err.errorMessage ? err.errorMessage : err
+            );
+
+            connStatusText.innerText = "MQTT Error";
+            connStatusDot.classList.remove("bg-slate-400", "bg-yellow-400", "bg-green-500");
+            connStatusDot.classList.add("bg-red-500");
+
+            // Fall back to simulated data so the UI still moves
+            startSimulationIfNeeded();
+        }
+
+        function handleMqttConnectionLost(responseObject) {
+            const msg = responseObject && responseObject.errorMessage
+                ? responseObject.errorMessage
+                : "unknown";
+            console.warn("MQTT connection lost:", msg);
+
+            connStatusText.innerText = "MQTT Disconnected";
+            connStatusDot.classList.remove("bg-slate-400", "bg-yellow-400", "bg-green-500");
+            connStatusDot.classList.add("bg-red-500");
+
+            // Fall back to simulated data
+            startSimulationIfNeeded();
+
+            // Try a simple auto-reconnect after a short delay
+            setTimeout(() => {
+                console.log("Reconnecting MQTT…");
+                initMqtt();
+            }, 3000);
+        }
+
+        function handleMqttMessageArrived(message) {
+            if (!message || typeof message.payloadString !== "string") {
+                return;
+            }
+
+            const telemetry = parseAndValidateTelemetry(message.payloadString);
+            if (!telemetry) {
+                // Invalid / malformed payload – ignore
+                return;
+            }
+
+            // Validated telemetry: { temperature, humidity, status }
+            updateLiveDashboard(telemetry);
+        }
+
 
         // --- Chart.js Gauge Config ---
         const createGaugeConfig = (color, maxVal) => ({

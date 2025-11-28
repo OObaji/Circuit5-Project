@@ -4,10 +4,12 @@
 #include <ArduinoMqttClient.h>
 
 // ---------- MQTT CONFIG ----------
-static const char MQTT_BROKER[]   = "broker.hivemq.com";
-static const int  MQTT_PORT       = 1883;
-static const char MQTT_TOPIC[]    = "hope/iot/circuit5/living-room/uno-r4/telemetry";
-static const char MQTT_CLIENT_ID[] = "uno-r4-living-room";
+const MQTT_BROKER    = "broker.hivemq.com";
+const MQTT_PORT      = 8884;                 // secure WebSocket port
+const MQTT_PATH      = "/mqtt";              // required path for HiveMQ WS
+const MQTT_TOPIC     = "hope/iot/circuit5/living-room/uno-r4/telemetry";
+const MQTT_CLIENT_ID = "webdash_" + Math.random().toString(16).slice(2, 8);
+
 
 // Under-the-hood MQTT objects (not visible to Sketch.ino)
 static WiFiClient   gWifiClient;
