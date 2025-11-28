@@ -629,62 +629,153 @@
             }
         }
 
-        function updateHistoricalChartFromRecords(records) {
-        if (!records || records.length === 0) {
-            return;
+    function updateHistoricalChartFromRecords(records) {
+        // If no records, clear chart and bail
+            if (!records || records.length === 0) {
+                historicalChart.data.labels = [];
+                historicalChart.data.datasets[0].data = [];
+                historicalChart.data.datasets[1].data = [];
+                historicalChart.update();
+                return;
+            }
+
+            // 1) Build buckets: key -> { tempSum, humSum, count }
+            const buckets = {};
+
+            for (const rec of records) {
+                if (!rec.timestamp || rec.temperature == null || rec.humidity == null) continue;
+
+                const d = new Date(rec.timestamp);
+                if (isNaN(d.getTime())) continue;
+
+                let key;
+
+                switch (currentHistoryRange) {
+                    case 'hour':
+                        // Bucket by hour: "YYYY-MM-DDTHH"
+                        key = d.toISOString().slice(0, 13);
+                        break;
+
+                    case 'day':
+                        // Bucket by calendar day: "YYYY-MM-DD"
+                        key = d.toISOString().slice(0, 10);
+                        break;
+
+                    case 'month':
+                        // Bucket by calendar month: "YYYY-MM"
+                        key = d.toISOString().slice(0, 7);
+                        break;
+
+                    case 'year':
+                        // Bucket by year: "YYYY"
+                        key = String(d.getUTCFullYear());
+                        break;
+
+                    default:
+                        key = d.toISOString().slice(0, 10); // fallback: day
+                        break;
+                }
+
+                if (!buckets[key]) {
+                    buckets[key] = { tempSum: 0, humSum: 0, count: 0 };
+                }
+
+                buckets[key].tempSum += Number(rec.temperature);
+                buckets[key].humSum += Number(rec.humidity);
+                buckets[key].count += 1;
+            }
+
+            const labels = [];
+            const avgTemps = [];
+            const avgHums = [];
+
+            // 2) Special handling for DAY view: always show last 7 days,
+            // including days with no data (nulls -> visible gaps).
+            if (currentHistoryRange === 'day') {
+                const today = new Date();
+                // Work in UTC so it matches the toISOString() keys above
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date(Date.UTC(
+                        today.getUTCFullYear(),
+                        today.getUTCMonth(),
+                        today.getUTCDate() - i
+                    ));
+
+                    const key = d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+                    const bucket = buckets[key];
+
+                    labels.push(d.toLocaleDateString([], {
+                        day: "2-digit",
+                        month: "short"
+                    }));
+
+                    if (bucket && bucket.count > 0) {
+                        const avgTemp = bucket.tempSum / bucket.count;
+                        const avgHum = bucket.humSum / bucket.count;
+                        avgTemps.push(Number(avgTemp.toFixed(2)));
+                        avgHums.push(Number(avgHum.toFixed(2)));
+                    } else {
+                        // No data for this day -> show gaps
+                        avgTemps.push(null);
+                        avgHums.push(null);
+                    }
+                }
+            } else {
+                // 3) Default behaviour for hour / month / year:
+                //    only show buckets that actually have data.
+                const sortedKeys = Object.keys(buckets).sort();
+
+                for (const key of sortedKeys) {
+                    const bucket = buckets[key];
+                    if (bucket.count === 0) continue;
+
+                    const avgTemp = bucket.tempSum / bucket.count;
+                    const avgHum = bucket.humSum / bucket.count;
+
+                    let label = key;
+
+                    if (currentHistoryRange === 'hour') {
+                        // key: "YYYY-MM-DDTHH"
+                        const d = new Date(key + ":00:00.000Z");
+                        label = d.toLocaleString([], {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                        });
+                    } else if (currentHistoryRange === 'month') {
+                        // key: "YYYY-MM"
+                        const [y, m] = key.split("-");
+                        const d = new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+                        label = d.toLocaleDateString([], {
+                            month: "short",
+                            year: "numeric"
+                        });
+                    } else if (currentHistoryRange === 'year') {
+                        // key: "YYYY" -> just show the year
+                        label = key;
+                    } else {
+                        // fallback: treat as day
+                        const d = new Date(key + "T00:00:00.000Z");
+                        label = d.toLocaleDateString([], {
+                            day: "2-digit",
+                            month: "short"
+                        });
+                    }
+
+                    labels.push(label);
+                    avgTemps.push(Number(avgTemp.toFixed(2)));
+                    avgHums.push(Number(avgHum.toFixed(2)));
+                }
+            }
+
+            // 4) Update chart
+            historicalChart.data.labels = labels;
+            historicalChart.data.datasets[0].data = avgTemps;
+            historicalChart.data.datasets[1].data = avgHums;
+            historicalChart.update();
         }
 
-        const labels = records.map(rec => {
-            const d = new Date(rec.timestamp);
-
-            switch (currentHistoryRange) {
-                case 'hour':
-                    // Last 60 minutes – show time of day
-                    return d.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    });
-
-                case 'day':
-                    // Last 24 hours – still show time of day
-                    return d.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    });
-
-                case 'month':
-                    // Last 30 days – show date (e.g. "24 Nov")
-                    return d.toLocaleDateString([], {
-                        day: "2-digit",
-                        month: "short"
-                    });
-
-                case 'year':
-                    // Last 365 days – also show date
-                    return d.toLocaleDateString([], {
-                        day: "2-digit",
-                        month: "short"
-                    });
-
-                default:
-                    // Fallback: date + time
-                    return d.toLocaleString([], {
-                        day: "2-digit",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    });
-            }
-        });
-
-        const temps = records.map(rec => rec.temperature);
-        const hums  = records.map(rec => rec.humidity);
-
-        historicalChart.data.labels = labels;
-        historicalChart.data.datasets[0].data = temps; // temperature series
-        historicalChart.data.datasets[1].data = hums;  // humidity series
-        historicalChart.update();
-    }
 
 
     // OPTIONAL: Realtime listener using "on('value')" so the history chart
@@ -738,7 +829,7 @@
 
         const WINDOW_MS = {
             hour: 60 * 60 * 1000,
-            day: 24 * 60 * 60 * 1000,
+            day: 7 * 24 * 60 * 60 * 1000,  
             month: 30 * 24 * 60 * 60 * 1000,
             year: 365 * 24 * 60 * 60 * 1000
         };
