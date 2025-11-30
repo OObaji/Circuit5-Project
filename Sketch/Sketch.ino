@@ -71,6 +71,9 @@ void setup() {
 
   dht.begin();
 
+  // FOR TESTING: clear stored creds on each boot
+  // clearWifiCredentials(); // comment out in production!
+
   // --- Wi-Fi provisioning logic ---
   bool haveCreds = loadWifiCredentials(gWifiCreds);
   if (!haveCreds) {
@@ -120,7 +123,7 @@ void loop() {
 
   // --- Sensor logic every 10 seconds ---
 
-  if (millis() - lastSensorReadMillis >= 10000) {
+  if (millis() - lastSensorReadMillis >= 3000) {
     lastSensorReadMillis = millis();
 
     float humidity    = dht.readHumidity();

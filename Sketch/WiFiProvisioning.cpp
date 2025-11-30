@@ -3,7 +3,10 @@
 #include <WiFiS3.h>
 #include <EEPROM.h>
 
-// ===================== CONFIG =====================
+/* ===================== CONFIG =====================
+===     Portal Address: http://192.168.4.1        === 
+*/
+
 
 // AP used during provisioning
 static const char AP_SSID[]     = "UNO-R4-SETUP";
@@ -166,6 +169,7 @@ static void handleConfigClient(WiFiClient &client, WifiCredentials &creds) {
     client.print(newCreds.ssid);
     client.println(F("</p>"));
     client.println(F("<p>Now reset or power-cycle the board.<br>On next boot it will connect to this network.</p>"));
+    client.println(F("<p>COMMENT OUT clearWifiCredentials() in Sketch.ino after saving.</p>"));
     client.println(F("</body></html>"));
 
     Serial.println("Credentials saved to EEPROM. Please reset the board.");

@@ -601,7 +601,7 @@
         try {
         // Read last N readings for this device
         const snapshot = await db
-            .ref("readings/uno-r4")
+            .ref("readings/uno-r4-living-room")
             .limitToLast(limit)
             .once("value");
 
@@ -794,7 +794,7 @@
 
         // Build a new limited query
         historyListenerRef = db
-            .ref("readings/uno-r4")
+            .ref("readings/uno-r4-living-room")
             .limitToLast(limit);
 
         historyListenerRef.on("value", (snapshot) => {
