@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt  # pip install paho-mqtt
-import ssl
+import ssl # for TLS if needed
 
 # --- 1. MQTT CONFIG (MATCH UNO + DASHBOARD) ---
 BROKER = "broker.hivemq.com"

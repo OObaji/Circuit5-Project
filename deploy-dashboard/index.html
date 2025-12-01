@@ -504,9 +504,10 @@
         
         // --- MQTT CONFIGURATION ---
         const MQTT_BROKER     = "broker.hivemq.com";
-        const MQTT_PORT       = 8000;  // WebSocket port for HiveMQ public broker
+        const MQTT_PORT       = 8884;  // secure WebSocket port for HiveMQ public broker
         const MQTT_TOPIC      = "hope/iot/circuit5/living-room/uno-r4/telemetry"; // same as Arduino publish topic
         const MQTT_CLIENT_ID  = "webdash_" + Math.random().toString(16).slice(2, 8);
+        const MQTT_URL        = "wss://broker.hivemq.com:8884/mqtt";
 
         let mqttClient = null;          // Paho client instance
         let simulateIntervalId = null;  // optional fallback simulator timer
@@ -600,7 +601,7 @@
         try {
         // Read last N readings for this device
         const snapshot = await db
-            .ref("readings/uno-r4")
+            .ref("readings/uno-r4-living-room")
             .limitToLast(limit)
             .once("value");
 
@@ -629,62 +630,153 @@
             }
         }
 
-        function updateHistoricalChartFromRecords(records) {
-        if (!records || records.length === 0) {
-            return;
+    function updateHistoricalChartFromRecords(records) {
+        // If no records, clear chart and bail
+            if (!records || records.length === 0) {
+                historicalChart.data.labels = [];
+                historicalChart.data.datasets[0].data = [];
+                historicalChart.data.datasets[1].data = [];
+                historicalChart.update();
+                return;
+            }
+
+            // 1) Build buckets: key -> { tempSum, humSum, count }
+            const buckets = {};
+
+            for (const rec of records) {
+                if (!rec.timestamp || rec.temperature == null || rec.humidity == null) continue;
+
+                const d = new Date(rec.timestamp);
+                if (isNaN(d.getTime())) continue;
+
+                let key;
+
+                switch (currentHistoryRange) {
+                    case 'hour':
+                        // Bucket by hour: "YYYY-MM-DDTHH"
+                        key = d.toISOString().slice(0, 13);
+                        break;
+
+                    case 'day':
+                        // Bucket by calendar day: "YYYY-MM-DD"
+                        key = d.toISOString().slice(0, 10);
+                        break;
+
+                    case 'month':
+                        // Bucket by calendar month: "YYYY-MM"
+                        key = d.toISOString().slice(0, 7);
+                        break;
+
+                    case 'year':
+                        // Bucket by year: "YYYY"
+                        key = String(d.getUTCFullYear());
+                        break;
+
+                    default:
+                        key = d.toISOString().slice(0, 10); // fallback: day
+                        break;
+                }
+
+                if (!buckets[key]) {
+                    buckets[key] = { tempSum: 0, humSum: 0, count: 0 };
+                }
+
+                buckets[key].tempSum += Number(rec.temperature);
+                buckets[key].humSum += Number(rec.humidity);
+                buckets[key].count += 1;
+            }
+
+            const labels = [];
+            const avgTemps = [];
+            const avgHums = [];
+
+            // 2) Special handling for DAY view: always show last 7 days,
+            // including days with no data (nulls -> visible gaps).
+            if (currentHistoryRange === 'day') {
+                const today = new Date();
+                // Work in UTC so it matches the toISOString() keys above
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date(Date.UTC(
+                        today.getUTCFullYear(),
+                        today.getUTCMonth(),
+                        today.getUTCDate() - i
+                    ));
+
+                    const key = d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+                    const bucket = buckets[key];
+
+                    labels.push(d.toLocaleDateString([], {
+                        day: "2-digit",
+                        month: "short"
+                    }));
+
+                    if (bucket && bucket.count > 0) {
+                        const avgTemp = bucket.tempSum / bucket.count;
+                        const avgHum = bucket.humSum / bucket.count;
+                        avgTemps.push(Number(avgTemp.toFixed(2)));
+                        avgHums.push(Number(avgHum.toFixed(2)));
+                    } else {
+                        // No data for this day -> show gaps
+                        avgTemps.push(null);
+                        avgHums.push(null);
+                    }
+                }
+            } else {
+                // 3) Default behaviour for hour / month / year:
+                //    only show buckets that actually have data.
+                const sortedKeys = Object.keys(buckets).sort();
+
+                for (const key of sortedKeys) {
+                    const bucket = buckets[key];
+                    if (bucket.count === 0) continue;
+
+                    const avgTemp = bucket.tempSum / bucket.count;
+                    const avgHum = bucket.humSum / bucket.count;
+
+                    let label = key;
+
+                    if (currentHistoryRange === 'hour') {
+                        // key: "YYYY-MM-DDTHH"
+                        const d = new Date(key + ":00:00.000Z");
+                        label = d.toLocaleString([], {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                        });
+                    } else if (currentHistoryRange === 'month') {
+                        // key: "YYYY-MM"
+                        const [y, m] = key.split("-");
+                        const d = new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+                        label = d.toLocaleDateString([], {
+                            month: "short",
+                            year: "numeric"
+                        });
+                    } else if (currentHistoryRange === 'year') {
+                        // key: "YYYY" -> just show the year
+                        label = key;
+                    } else {
+                        // fallback: treat as day
+                        const d = new Date(key + "T00:00:00.000Z");
+                        label = d.toLocaleDateString([], {
+                            day: "2-digit",
+                            month: "short"
+                        });
+                    }
+
+                    labels.push(label);
+                    avgTemps.push(Number(avgTemp.toFixed(2)));
+                    avgHums.push(Number(avgHum.toFixed(2)));
+                }
+            }
+
+            // 4) Update chart
+            historicalChart.data.labels = labels;
+            historicalChart.data.datasets[0].data = avgTemps;
+            historicalChart.data.datasets[1].data = avgHums;
+            historicalChart.update();
         }
 
-        const labels = records.map(rec => {
-            const d = new Date(rec.timestamp);
-
-            switch (currentHistoryRange) {
-                case 'hour':
-                    // Last 60 minutes – show time of day
-                    return d.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    });
-
-                case 'day':
-                    // Last 24 hours – still show time of day
-                    return d.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    });
-
-                case 'month':
-                    // Last 30 days – show date (e.g. "24 Nov")
-                    return d.toLocaleDateString([], {
-                        day: "2-digit",
-                        month: "short"
-                    });
-
-                case 'year':
-                    // Last 365 days – also show date
-                    return d.toLocaleDateString([], {
-                        day: "2-digit",
-                        month: "short"
-                    });
-
-                default:
-                    // Fallback: date + time
-                    return d.toLocaleString([], {
-                        day: "2-digit",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    });
-            }
-        });
-
-        const temps = records.map(rec => rec.temperature);
-        const hums  = records.map(rec => rec.humidity);
-
-        historicalChart.data.labels = labels;
-        historicalChart.data.datasets[0].data = temps; // temperature series
-        historicalChart.data.datasets[1].data = hums;  // humidity series
-        historicalChart.update();
-    }
 
 
     // OPTIONAL: Realtime listener using "on('value')" so the history chart
@@ -702,7 +794,7 @@
 
         // Build a new limited query
         historyListenerRef = db
-            .ref("readings/uno-r4")
+            .ref("readings/uno-r4-living-room")
             .limitToLast(limit);
 
         historyListenerRef.on("value", (snapshot) => {
@@ -738,7 +830,7 @@
 
         const WINDOW_MS = {
             hour: 60 * 60 * 1000,
-            day: 24 * 60 * 60 * 1000,
+            day: 7 * 24 * 60 * 60 * 1000,  
             month: 30 * 24 * 60 * 60 * 1000,
             year: 365 * 24 * 60 * 60 * 1000
         };
@@ -849,78 +941,124 @@
         }
 
 
-                // --- MQTT INITIALISATION & CALLBACKS (NEW) ---
+                // --- MQTT INITIALISATION & CALLBACKS ---
+                // --- MQTT INITIALISATION & CALLBACKS ---
+
+        // Helper: start fallback simulation if real MQTT is unavailable
+        function startSimulationIfNeeded() {
+            if (!simulateIntervalId) {
+                console.log("Starting fallback simulated data feed…");
+                simulateIntervalId = setInterval(simulateData, 2000);
+            }
+        }
+
         function initMqtt() {
-            // Update UI to show we're trying to connect
-            connStatusText.innerText = "Connecting to MQTT...";
-            connStatusDot.classList.remove("bg-slate-400", "bg-red-500");
+            console.log(`Connecting to MQTT over WSS ${MQTT_BROKER}:${MQTT_PORT}/mqtt as ${MQTT_CLIENT_ID}`);
+
+            // Make sure we don't keep a stale client around
+            if (mqttClient) {
+                try {
+                    mqttClient.disconnect();
+                } catch (e) {
+                    console.warn("Previous MQTT client disconnect failed:", e);
+                }
+                mqttClient = null;
+            }
+
+            // UI: show "connecting"
+            connStatusText.innerText = "MQTT Connecting…";
+            connStatusDot.classList.remove("bg-slate-400", "bg-green-500", "bg-red-500");
             connStatusDot.classList.add("bg-yellow-400");
 
-            // Create MQTT client instance (WebSocket)
+            // Create the client: host, port, websocket path, clientId
             mqttClient = new Paho.MQTT.Client(
                 MQTT_BROKER,
                 Number(MQTT_PORT),
+                "/mqtt",
                 MQTT_CLIENT_ID
             );
 
-            // Called when the connection drops
-            mqttClient.onConnectionLost = (responseObject) => {
-                console.warn("MQTT connection lost:", responseObject.errorMessage);
-                connStatusText.innerText = "MQTT Disconnected";
-                connStatusDot.classList.remove("bg-green-500", "bg-yellow-400");
-                connStatusDot.classList.add("bg-red-500");
+            // Attach handlers – now mqttClient is definitely not null
+            mqttClient.onConnectionLost   = handleMqttConnectionLost;
+            mqttClient.onMessageArrived   = handleMqttMessageArrived;
 
-                // OPTIONAL: fall back to simulated data if broker goes down
-                if (!simulateIntervalId) {
-                    simulateIntervalId = setInterval(simulateData, 2000);
-                }
-            };
-
-            // Called every time a message arrives on a subscribed topic
-            mqttClient.onMessageArrived = (message) => {
-                const payload = message.payloadString;
-                const telemetry = parseAndValidateTelemetry(payload);
-                if (!telemetry) {
-                    // Invalid / malicious / nonsense payload – ignore silently
-                return;
-                }
-
-                // telemetry is guaranteed: { temperature: Number, humidity: Number, status: "normal"|"alert"|"error"|"unknown" }
-                updateLiveDashboard(telemetry);
-            };
-
-            // Now connect to the broker
+            // Connect over secure WebSockets (wss://)
             mqttClient.connect({
-                useSSL: false, // set true if you later move to wss/secure endpoint
-                onSuccess: () => {
-                    console.log("MQTT connected");
-                    connStatusText.innerText = "MQTT Connected";
-                    connStatusDot.classList.remove("bg-slate-400", "bg-yellow-400", "bg-red-500");
-                    connStatusDot.classList.add("bg-green-500");
-
-                    // Stop any simulation if it is running
-                    if (simulateIntervalId) {
-                        clearInterval(simulateIntervalId);
-                        simulateIntervalId = null;
-                    }
-
-                    // Subscribe to the telemetry topic
-                    mqttClient.subscribe(MQTT_TOPIC);
-                    console.log("Subscribed to:", MQTT_TOPIC);
-                },
-                onFailure: (err) => {
-                    console.error("MQTT connect failed:", err.errorMessage);
-                    connStatusText.innerText = "MQTT Error";
-                    connStatusDot.classList.remove("bg-yellow-400", "bg-green-500");
-                    connStatusDot.classList.add("bg-red-500");
-
-                    // OPTIONAL: if we can't connect, fall back to simulated data
-                    if (!simulateIntervalId) {
-                        simulateIntervalId = setInterval(simulateData, 2000);
-                    }
-                }
+                useSSL: true,          // required for wss://broker.hivemq.com:8884
+                timeout: 5,
+                onSuccess: handleMqttConnectSuccess,
+                onFailure: handleMqttConnectFailure
             });
         }
+
+        function handleMqttConnectSuccess() {
+            console.log("MQTT connected");
+            connStatusText.innerText = "MQTT Connected";
+            connStatusDot.classList.remove("bg-slate-400", "bg-yellow-400", "bg-red-500");
+            connStatusDot.classList.add("bg-green-500");
+
+            // Stop any simulation if it was running
+            if (simulateIntervalId) {
+                clearInterval(simulateIntervalId);
+                simulateIntervalId = null;
+            }
+
+            if (mqttClient) {
+                mqttClient.subscribe(MQTT_TOPIC);
+                console.log("Subscribed to:", MQTT_TOPIC);
+            } else {
+                console.warn("MQTT connected but client is null – this should not happen.");
+            }
+        }
+
+        function handleMqttConnectFailure(err) {
+            console.error("MQTT connect failed:",
+                err && err.errorMessage ? err.errorMessage : err
+            );
+
+            connStatusText.innerText = "MQTT Error";
+            connStatusDot.classList.remove("bg-slate-400", "bg-yellow-400", "bg-green-500");
+            connStatusDot.classList.add("bg-red-500");
+
+            // Fall back to simulated data so the UI still moves
+            startSimulationIfNeeded();
+        }
+
+        function handleMqttConnectionLost(responseObject) {
+            const msg = responseObject && responseObject.errorMessage
+                ? responseObject.errorMessage
+                : "unknown";
+            console.warn("MQTT connection lost:", msg);
+
+            connStatusText.innerText = "MQTT Disconnected";
+            connStatusDot.classList.remove("bg-slate-400", "bg-yellow-400", "bg-green-500");
+            connStatusDot.classList.add("bg-red-500");
+
+            // Fall back to simulated data
+            startSimulationIfNeeded();
+
+            // Try a simple auto-reconnect after a short delay
+            setTimeout(() => {
+                console.log("Reconnecting MQTT…");
+                initMqtt();
+            }, 3000);
+        }
+
+        function handleMqttMessageArrived(message) {
+            if (!message || typeof message.payloadString !== "string") {
+                return;
+            }
+
+            const telemetry = parseAndValidateTelemetry(message.payloadString);
+            if (!telemetry) {
+                // Invalid / malformed payload – ignore
+                return;
+            }
+
+            // Validated telemetry: { temperature, humidity, status }
+            updateLiveDashboard(telemetry);
+        }
+
 
         // --- Chart.js Gauge Config ---
         const createGaugeConfig = (color, maxVal) => ({
