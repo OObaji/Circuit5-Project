@@ -598,38 +598,39 @@
     }
 
     // --- FIREBASE HISTORY FETCHING HELPERS ---
-    async function fetchHistoryFromFirebase(limit = 50) {
+    // --- FIREBASE HISTORY FETCHING HELPERS ---
+    // Fetch ALL readings for this device, then sort by timestamp.
+    async function fetchHistoryFromFirebase() {
         try {
-        // Read last N readings for this device
-        const snapshot = await db
-            .ref("readings/uno-r4-living-room")
-            .limitToLast(limit)
-            .once("value");
+            const snapshot = await db
+                .ref("readings/uno-r4-living-room")
+                .once("value");   // 👈 no limitToLast here
 
-        const data = snapshot.val();
-        if (!data) {
-            console.warn("No historical data in Firebase yet.");
-            return [];
-          }
-
-          // Convert object { key: {timestamp, temperature,...} } -> sorted array
-          const records = Object.entries(data).map(([key, value]) => ({
-            key,
-            timestamp: value.timestamp,
-            temperature: value.temperature,
-            humidity: value.humidity,
-            status: value.status,
-          }));
-
-        // Sort by timestamp ascending
-        records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-        return records;
-        } catch (err) {
-        console.error("Failed to fetch history from Firebase:", err);
-        return [];
+            const data = snapshot.val();
+            if (!data) {
+                console.warn("No historical data in Firebase yet.");
+                return [];
             }
+
+            // Convert { key: {timestamp, temperature,...} } -> array
+            const records = Object.entries(data).map(([key, value]) => ({
+                key,
+                timestamp: value.timestamp,
+                temperature: value.temperature,
+                humidity: value.humidity,
+                status: value.status,
+            }));
+
+            // Sort by timestamp ascending
+            records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            return records;
+        } catch (err) {
+            console.error("Failed to fetch history from Firebase:", err);
+            return [];
         }
+    }
+
 
     function updateHistoricalChartFromRecords(records) {
         // If no records, clear chart and bail
@@ -782,7 +783,8 @@
 
     // OPTIONAL: Realtime listener using "on('value')" so the history chart
     // updates automatically whenever new readings arrive.
-    function attachHistoryRealtimeListener(limit, range) {
+    // OPTIONAL: Realtime listener so the history chart updates when new readings arrive.
+    function attachHistoryRealtimeListener(range) {
         if (!ENABLE_HISTORY_REALTIME) return;
 
         const effectiveRange = range || 'year';
@@ -793,10 +795,8 @@
             historyListenerRef = null;
         }
 
-        // Build a new limited query
-        historyListenerRef = db
-            .ref("readings/uno-r4-living-room")
-            .limitToLast(limit);
+        // Listen to ALL readings; Firebase will send the full snapshot on each change
+        historyListenerRef = db.ref("readings/uno-r4-living-room");
 
         historyListenerRef.on("value", (snapshot) => {
             const data = snapshot.val();
@@ -820,12 +820,13 @@
             // Sort ascending by timestamp
             records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-            // Apply the same time-window filtering as the one-off fetch
-            const filtered = filterRecordsByTimeWindow(records, effectiveRange);
-            updateHistoricalChartFromRecords(filtered);
+            // Use the currentHistoryRange (hour/day/month/year) to build buckets
+            currentHistoryRange = effectiveRange;
+            updateHistoricalChartFromRecords(records);
         });
     }
 
+/*    // No longer utilised: Filter records to only those within the specified time window
     function filterRecordsByTimeWindow(records, range) {
         const now = Date.now();
 
@@ -843,7 +844,7 @@
             return now - ts <= windowSize;
         });
     }
-
+*/
 
         // Get all our HTML elements
         const connStatusDot = document.getElementById('conn-status');
@@ -1177,16 +1178,13 @@
                 isAlertActive = false;
             }
         }
-    
 
         // --- Historical Chart Update (Firebase-backed) ---
-                // --- Historical Chart Update (Firebase-backed) ---
         async function updateHistoricalChart(timeRange) {
             const range = timeRange || 'year';
             currentHistoryRange = range;
-            const limit = HISTORY_LIMITS[range] || 200;
 
-            console.log(`Loading historical data from Firebase for range "${range}" (limit=${limit})`);
+            console.log(`Loading historical data from Firebase for range "${range}" (aggregated)`);
 
             // 1) Visually activate the selected button
             document.querySelectorAll('#chart-buttons .btn-chart').forEach(btn => {
@@ -1196,8 +1194,8 @@
                 }
             });
 
-            // 2) One-off fetch of the last N records
-            const records = await fetchHistoryFromFirebase(limit);
+            // 2) Fetch ALL records once
+            const records = await fetchHistoryFromFirebase();
 
             if (!records || records.length === 0) {
                 console.warn("No historical records returned for range:", range);
@@ -1208,7 +1206,6 @@
                 historicalChart.data.datasets[1].data = [];
                 historicalChart.update();
 
-                // Detach any existing realtime listener (no data to listen to)
                 if (historyListenerRef) {
                     historyListenerRef.off('value');
                     historyListenerRef = null;
@@ -1216,13 +1213,13 @@
                 return;
             }
 
-            // 3) Apply time-window filtering (true Hour/Day/Month/Year behaviour)
-            const filtered = filterRecordsByTimeWindow(records, range);
-            updateHistoricalChartFromRecords(filtered);
+            // 3) Directly aggregate everything into buckets
+            updateHistoricalChartFromRecords(records);
 
-            // 4) Attach realtime listener so new points respect the same range
-            attachHistoryRealtimeListener(limit, range);
+            // 4) Optional realtime listener (see next step)
+            attachHistoryRealtimeListener(range);
         }
+
 
 
         
