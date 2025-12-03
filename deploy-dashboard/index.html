@@ -525,7 +525,7 @@
 
         const MAX_LIVE_DATA_POINTS = 30;
         // Tracks which history range is currently active ("hour", "day", "month", "year")
-        let currentHistoryRange = 'year';
+        let currentHistoryRange = 'hour';
 
 
         // --- HISTORY CONFIG (Firebase-backed) ---
@@ -1206,7 +1206,7 @@
 
         // --- Historical Chart Update (Firebase-backed) ---
         async function updateHistoricalChart(timeRange) {
-            const range = timeRange || 'year';
+            const range = timeRange || 'hour';
             currentHistoryRange = range;
 
             console.log(`Loading historical data from Firebase for range "${range}" (aggregated)`);
@@ -1469,10 +1469,10 @@
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
             loadThresholdSettings();
-            updateHistoricalChart('year'); 
+            updateHistoricalChart('hour'); 
             showPage('page-dashboard');
             updateChartTheme();
-            document.querySelector('.btn-chart[data-range="year"]').classList.add('btn-chart-active');
+            document.querySelector('.btn-chart[data-range="hour"]').classList.add('btn-chart-active');
 
             // Prefer real MQTT data:
             initMqtt();
