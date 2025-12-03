@@ -123,7 +123,7 @@ void loop() {
 
   // --- Sensor logic every 10 seconds ---
 
-  if (millis() - lastSensorReadMillis >= 3000) {
+  if (millis() - lastSensorReadMillis >= 15000) {
     lastSensorReadMillis = millis();
 
     float humidity    = dht.readHumidity();
