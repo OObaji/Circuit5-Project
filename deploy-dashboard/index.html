@@ -503,15 +503,14 @@
         let MAX_HUMIDITY = 60.0;
         
         // --- MQTT CONFIGURATION ---
-        const MQTT_BROKER     = "broker.hivemq.com";
+        const MQTT_BROKER     = "a31a3d6ffbe845caaf1b0c59dc4f9ebe.s1.eu.hivemq.cloud";
         const MQTT_PORT       = 8884;  // secure WebSocket port for HiveMQ public broker
         const MQTT_TOPIC      = "hope/iot/circuit5/living-room/uno-r4/telemetry"; // same as Arduino publish topic
-        const MQTT_CLIENT_ID  = "webdash_" + Math.random().toString(16).slice(2, 8);
-        const MQTT_URL        = "wss://broker.hivemq.com:8884/mqtt";
-
-        let mqttClient = null;          // Paho client instance
-        let simulateIntervalId = null;  // optional fallback simulator timer
+        const MQTT_USERNAME = "AlexHiveMQ";
+        const MQTT_PASSWORD = "yu81V&9Ni9&'";
+        const MQTT_CLIENT_ID = "web-test-" + Math.floor(Math.random() * 100000);
         
+        let mqttClient = null;  // Required for MQTT connection
 
         // ALERT STATE VARIABLE
         let isAlertActive = false;
@@ -522,6 +521,8 @@
         // Alert Notification Master Switch (Controlled by Push Toggle)
         let isAlertNotificationOn = true; 
         
+        let simulateIntervalId = null;
+
         const MAX_LIVE_DATA_POINTS = 30;
         // Tracks which history range is currently active ("hour", "day", "month", "year")
         let currentHistoryRange = 'year';
@@ -984,8 +985,10 @@
 
             // Connect over secure WebSockets (wss://)
             mqttClient.connect({
-                useSSL: true,          // required for wss://broker.hivemq.com:8884
+                useSSL: true,          // required for wss:// on port 8884
                 timeout: 5,
+                userName: MQTT_USERNAME,
+                password: MQTT_PASSWORD,
                 onSuccess: handleMqttConnectSuccess,
                 onFailure: handleMqttConnectFailure
             });
