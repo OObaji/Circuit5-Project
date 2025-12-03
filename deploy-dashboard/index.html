@@ -1113,10 +1113,35 @@
                 responsive: true,
                 scales: {
                     x: {},
-                    yTemp: { type: 'linear', position: 'left', ticks: { callback: (value) => `${value}°C` }, },
-                    yHum: { type: 'linear', position: 'right', ticks: { callback: (value) => `${value}%` }, grid: { display: false } }
+                    yTemp: {
+                        type: 'linear',
+                        position: 'left',
+                        ticks: {
+                            callback: (value) => `${Number(value).toFixed(1)}°C`
+                        }
+                    },
+                    yHum: {
+                        type: 'linear',
+                        position: 'right',
+                        ticks: {
+                            callback: (value) => `${Number(value).toFixed(1)}%`
+                        },
+                        grid: { display: false }
+                    }
                 },
-                plugins: { legend: { labels: {} } }
+                plugins: {
+                    legend: { labels: {} },
+                    tooltip: {
+                        callbacks: {
+                            // Optional: also clean up tooltip values
+                            label: (ctx) => {
+                                const label = ctx.dataset.label || "";
+                                const v = Number(ctx.parsed.y).toFixed(1);
+                                return `${label}: ${v}`;
+                            }
+                        }
+                    }
+                }
             }
         };
 
