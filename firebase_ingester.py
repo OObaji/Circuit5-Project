@@ -6,9 +6,12 @@ import paho.mqtt.client as mqtt  # pip install paho-mqtt
 import ssl # for TLS if needed
 
 # --- 1. MQTT CONFIG (MATCH UNO + DASHBOARD) ---
-BROKER = "broker.hivemq.com"
-PORT = 1883                     # public, non-TLS MQTT port
+BROKER = "a31a3d6ffbe845caaf1b0c59dc4f9ebe.s1.eu.hivemq.cloud"
+PORT = 8883
 TOPIC = "hope/iot/circuit5/living-room/uno-r4/telemetry"
+
+USERNAME = "AlexHiveMQ"
+PASSWORD = "yu81V&9Ni9&'"
 
 
 # --- 2. FIREBASE CONFIG (REALTIME DATABASE) ---
@@ -157,12 +160,13 @@ def main():
     print("[System] Connecting to MQTT broker...")
     client = mqtt.Client()
 
-    # NOTE: we are using public broker.hivemq.com:1883 with no auth here to
-    # match your UNO + dashboard. If you later move to a secured broker,
-    # uncomment and adapt:
-    #
-    # client.username_pw_set("your-username", "your-password")
-    # client.tls_set(cert_reqs=ssl.CERT_REQUIRED)   # and change PORT to 8883
+     # --- AUTH + TLS for HiveMQ Cloud ---
+    client.username_pw_set(USERNAME, PASSWORD)
+
+    # For proper security, you should use CERT_REQUIRED with a CA bundle.
+    # For quick testing in a lab/demo environment, CERT_NONE will work
+    # but does not validate the server certificate.
+    client.tls_set(cert_reqs=ssl.CERT_NONE)
 
     client.on_connect = on_connect
     client.on_message = on_message
