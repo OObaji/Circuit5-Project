@@ -1,27 +1,30 @@
-// MqttTelemetry.cpp
 #include <ArduinoMqttClient.h>
 #include <WiFiS3.h>
 
 #include "MqttTelemetry.h"
 
-// --- 1. MQTT CONFIG FOR UNO R4 (DEVICE SIDE, TCP, NOT WEBSOCKETS) ---
+// --- 1. MQTT CONFIG FOR UNO R4 (DEVICE SIDE, TLS + AUTH) ---
 
-// Broker host and port (plain MQTT over TCP)
-static const char MQTT_BROKER[] = "broker.hivemq.com";
-static const int  MQTT_PORT     = 1883; // device uses normal MQTT, not WebSockets
+// HiveMQ Cloud broker (your private cluster)
+static const char MQTT_BROKER[]   = "a31a3d6ffbe845caaf1b0c59dc4f9ebe.s1.eu.hivemq.cloud";
+static const int  MQTT_PORT       = 8883;   // TLS port
 
-// Topic the UNO publishes to
-static const char MQTT_TOPIC[]  = "hope/iot/circuit5/living-room/uno-r4/telemetry";
+// Topic the UNO publishes to (unchanged)
+static const char MQTT_TOPIC[]    = "hope/iot/circuit5/living-room/uno-r4/telemetry";
 
-// Client ID for this device (any unique-ish string is fine)
+// Client ID for this device
 static const char MQTT_CLIENT_ID[] = "uno-r4-living-room";
+
+// HiveMQ Cloud auth (move to a Secrets.h + .gitignore later if you want)
+static const char MQTT_USERNAME[] = "AlexHiveMQ";
+static const char MQTT_PASSWORD[] = "yu81V&9Ni9&'";
 
 // --- 2. GLOBAL MQTT OBJECTS ---
 
-// WiFi client used by MQTT
-static WiFiClient wifiClient;
+// Use SSL/TLS client for port 8883
+static WiFiSSLClient wifiClient;
 
-// ArduinoMqttClient instance
+// ArduinoMqttClient instance (wraps the SSL client)
 static MqttClient gMqttClient(wifiClient);
 
 // Forward declaration of internal helper
@@ -36,9 +39,8 @@ void mqttSetup() {
   gMqttClient.setId(MQTT_CLIENT_ID);
   gMqttClient.setKeepAliveInterval(60);
 
-  // Optional: username/password for brokers that need it
-  // (HiveMQ public broker doesn't, but this is harmless)
-  gMqttClient.setUsernamePassword("", "");
+  // Set username/password for HiveMQ Cloud
+  gMqttClient.setUsernamePassword(MQTT_USERNAME, MQTT_PASSWORD);
 
   // Connect to broker (host + port) in helper
   connectToMqttBroker();
@@ -108,5 +110,5 @@ static void connectToMqttBroker() {
     delay(2000);
   }
 
-  Serial.println("MQTT: Connected to HiveMQ broker.");
+  Serial.println("MQTT: Connected to HiveMQ Cloud broker.");
 }

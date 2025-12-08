@@ -503,15 +503,14 @@
         let MAX_HUMIDITY = 60.0;
         
         // --- MQTT CONFIGURATION ---
-        const MQTT_BROKER     = "broker.hivemq.com";
+        const MQTT_BROKER     = "a31a3d6ffbe845caaf1b0c59dc4f9ebe.s1.eu.hivemq.cloud";
         const MQTT_PORT       = 8884;  // secure WebSocket port for HiveMQ public broker
         const MQTT_TOPIC      = "hope/iot/circuit5/living-room/uno-r4/telemetry"; // same as Arduino publish topic
-        const MQTT_CLIENT_ID  = "webdash_" + Math.random().toString(16).slice(2, 8);
-        const MQTT_URL        = "wss://broker.hivemq.com:8884/mqtt";
-
-        let mqttClient = null;          // Paho client instance
-        let simulateIntervalId = null;  // optional fallback simulator timer
+        const MQTT_USERNAME = "AlexHiveMQ";
+        const MQTT_PASSWORD = "yu81V&9Ni9&'";
+        const MQTT_CLIENT_ID = "web-test-" + Math.floor(Math.random() * 100000);
         
+        let mqttClient = null;  // Required for MQTT connection
 
         // ALERT STATE VARIABLE
         let isAlertActive = false;
@@ -522,9 +521,11 @@
         // Alert Notification Master Switch (Controlled by Push Toggle)
         let isAlertNotificationOn = true; 
         
+        let simulateIntervalId = null;
+
         const MAX_LIVE_DATA_POINTS = 30;
         // Tracks which history range is currently active ("hour", "day", "month", "year")
-        let currentHistoryRange = 'year';
+        let currentHistoryRange = 'hour';
 
 
         // --- HISTORY CONFIG (Firebase-backed) ---
@@ -597,38 +598,39 @@
     }
 
     // --- FIREBASE HISTORY FETCHING HELPERS ---
-    async function fetchHistoryFromFirebase(limit = 50) {
+    // --- FIREBASE HISTORY FETCHING HELPERS ---
+    // Fetch ALL readings for this device, then sort by timestamp.
+    async function fetchHistoryFromFirebase() {
         try {
-        // Read last N readings for this device
-        const snapshot = await db
-            .ref("readings/uno-r4-living-room")
-            .limitToLast(limit)
-            .once("value");
+            const snapshot = await db
+                .ref("readings/uno-r4-living-room")
+                .once("value");   // 👈 no limitToLast here
 
-        const data = snapshot.val();
-        if (!data) {
-            console.warn("No historical data in Firebase yet.");
-            return [];
-          }
-
-          // Convert object { key: {timestamp, temperature,...} } -> sorted array
-          const records = Object.entries(data).map(([key, value]) => ({
-            key,
-            timestamp: value.timestamp,
-            temperature: value.temperature,
-            humidity: value.humidity,
-            status: value.status,
-          }));
-
-        // Sort by timestamp ascending
-        records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-        return records;
-        } catch (err) {
-        console.error("Failed to fetch history from Firebase:", err);
-        return [];
+            const data = snapshot.val();
+            if (!data) {
+                console.warn("No historical data in Firebase yet.");
+                return [];
             }
+
+            // Convert { key: {timestamp, temperature,...} } -> array
+            const records = Object.entries(data).map(([key, value]) => ({
+                key,
+                timestamp: value.timestamp,
+                temperature: value.temperature,
+                humidity: value.humidity,
+                status: value.status,
+            }));
+
+            // Sort by timestamp ascending
+            records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            return records;
+        } catch (err) {
+            console.error("Failed to fetch history from Firebase:", err);
+            return [];
         }
+    }
+
 
     function updateHistoricalChartFromRecords(records) {
         // If no records, clear chart and bail
@@ -781,7 +783,8 @@
 
     // OPTIONAL: Realtime listener using "on('value')" so the history chart
     // updates automatically whenever new readings arrive.
-    function attachHistoryRealtimeListener(limit, range) {
+    // OPTIONAL: Realtime listener so the history chart updates when new readings arrive.
+    function attachHistoryRealtimeListener(range) {
         if (!ENABLE_HISTORY_REALTIME) return;
 
         const effectiveRange = range || 'year';
@@ -792,10 +795,8 @@
             historyListenerRef = null;
         }
 
-        // Build a new limited query
-        historyListenerRef = db
-            .ref("readings/uno-r4-living-room")
-            .limitToLast(limit);
+        // Listen to ALL readings; Firebase will send the full snapshot on each change
+        historyListenerRef = db.ref("readings/uno-r4-living-room");
 
         historyListenerRef.on("value", (snapshot) => {
             const data = snapshot.val();
@@ -819,12 +820,13 @@
             // Sort ascending by timestamp
             records.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-            // Apply the same time-window filtering as the one-off fetch
-            const filtered = filterRecordsByTimeWindow(records, effectiveRange);
-            updateHistoricalChartFromRecords(filtered);
+            // Use the currentHistoryRange (hour/day/month/year) to build buckets
+            currentHistoryRange = effectiveRange;
+            updateHistoricalChartFromRecords(records);
         });
     }
 
+/*    // No longer utilised: Filter records to only those within the specified time window
     function filterRecordsByTimeWindow(records, range) {
         const now = Date.now();
 
@@ -842,7 +844,7 @@
             return now - ts <= windowSize;
         });
     }
-
+*/
 
         // Get all our HTML elements
         const connStatusDot = document.getElementById('conn-status');
@@ -984,8 +986,10 @@
 
             // Connect over secure WebSockets (wss://)
             mqttClient.connect({
-                useSSL: true,          // required for wss://broker.hivemq.com:8884
+                useSSL: true,          // required for wss:// on port 8884
                 timeout: 5,
+                userName: MQTT_USERNAME,
+                password: MQTT_PASSWORD,
                 onSuccess: handleMqttConnectSuccess,
                 onFailure: handleMqttConnectFailure
             });
@@ -1109,10 +1113,35 @@
                 responsive: true,
                 scales: {
                     x: {},
-                    yTemp: { type: 'linear', position: 'left', ticks: { callback: (value) => `${value}°C` }, },
-                    yHum: { type: 'linear', position: 'right', ticks: { callback: (value) => `${value}%` }, grid: { display: false } }
+                    yTemp: {
+                        type: 'linear',
+                        position: 'left',
+                        ticks: {
+                            callback: (value) => `${Number(value).toFixed(1)}°C`
+                        }
+                    },
+                    yHum: {
+                        type: 'linear',
+                        position: 'right',
+                        ticks: {
+                            callback: (value) => `${Number(value).toFixed(1)}%`
+                        },
+                        grid: { display: false }
+                    }
                 },
-                plugins: { legend: { labels: {} } }
+                plugins: {
+                    legend: { labels: {} },
+                    tooltip: {
+                        callbacks: {
+                            // Optional: also clean up tooltip values
+                            label: (ctx) => {
+                                const label = ctx.dataset.label || "";
+                                const v = Number(ctx.parsed.y).toFixed(1);
+                                return `${label}: ${v}`;
+                            }
+                        }
+                    }
+                }
             }
         };
 
@@ -1174,16 +1203,13 @@
                 isAlertActive = false;
             }
         }
-    
 
         // --- Historical Chart Update (Firebase-backed) ---
-                // --- Historical Chart Update (Firebase-backed) ---
         async function updateHistoricalChart(timeRange) {
-            const range = timeRange || 'year';
+            const range = timeRange || 'hour';
             currentHistoryRange = range;
-            const limit = HISTORY_LIMITS[range] || 200;
 
-            console.log(`Loading historical data from Firebase for range "${range}" (limit=${limit})`);
+            console.log(`Loading historical data from Firebase for range "${range}" (aggregated)`);
 
             // 1) Visually activate the selected button
             document.querySelectorAll('#chart-buttons .btn-chart').forEach(btn => {
@@ -1193,8 +1219,8 @@
                 }
             });
 
-            // 2) One-off fetch of the last N records
-            const records = await fetchHistoryFromFirebase(limit);
+            // 2) Fetch ALL records once
+            const records = await fetchHistoryFromFirebase();
 
             if (!records || records.length === 0) {
                 console.warn("No historical records returned for range:", range);
@@ -1205,7 +1231,6 @@
                 historicalChart.data.datasets[1].data = [];
                 historicalChart.update();
 
-                // Detach any existing realtime listener (no data to listen to)
                 if (historyListenerRef) {
                     historyListenerRef.off('value');
                     historyListenerRef = null;
@@ -1213,13 +1238,13 @@
                 return;
             }
 
-            // 3) Apply time-window filtering (true Hour/Day/Month/Year behaviour)
-            const filtered = filterRecordsByTimeWindow(records, range);
-            updateHistoricalChartFromRecords(filtered);
+            // 3) Directly aggregate everything into buckets
+            updateHistoricalChartFromRecords(records);
 
-            // 4) Attach realtime listener so new points respect the same range
-            attachHistoryRealtimeListener(limit, range);
+            // 4) Optional realtime listener (see next step)
+            attachHistoryRealtimeListener(range);
         }
+
 
 
         
@@ -1444,10 +1469,10 @@
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
             loadThresholdSettings();
-            updateHistoricalChart('year'); 
+            updateHistoricalChart('hour'); 
             showPage('page-dashboard');
             updateChartTheme();
-            document.querySelector('.btn-chart[data-range="year"]').classList.add('btn-chart-active');
+            document.querySelector('.btn-chart[data-range="hour"]').classList.add('btn-chart-active');
 
             // Prefer real MQTT data:
             initMqtt();
